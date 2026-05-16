@@ -1,12 +1,39 @@
 from __future__ import annotations
 
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from tokenmessung.fixture import create_fixture
-from tokenmessung.runner import copy_fixture, install_agents_dir, install_agents_file, remove_control_instructions, run_one, synthesize_benchmark, validate_benchmark_inputs
+from tokenmessung.runner import copy_fixture, install_agents_dir, install_agents_file, remove_control_instructions, run_one, selected_tasks, synthesize_benchmark, validate_benchmark_inputs
+
+
+class FakeProcess:
+    def __init__(self, waits: list[int | str] | None = None) -> None:
+        self.waits = waits or [0]
+        self.returncode: int | None = None
+        self.terminated = False
+        self.killed = False
+
+    def wait(self, timeout: float | None = None) -> int:
+        value = self.waits.pop(0)
+        if value == "timeout":
+            raise subprocess.TimeoutExpired("codex", timeout)
+        self.returncode = int(value)
+        return self.returncode
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = -15
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
 
 
 class RunnerVariantTests(unittest.TestCase):
@@ -121,7 +148,7 @@ class RunnerVariantTests(unittest.TestCase):
             (fixture / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
             agents_file = fixture / "AGENTS.md"
             task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
-            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess()), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
                 run_one(fixture=fixture, agents_file=agents_file, agents_dir=None, model="model", out=base / "results", task=task, variant="agents", repeat=1, run_order=1)
                 removed_meta = (base / "results" / "task__agents__r1" / "meta.json").read_text(encoding="utf-8")
                 self.assertIn('"workdir_cleanup": "removed"', removed_meta)
@@ -141,7 +168,7 @@ class RunnerVariantTests(unittest.TestCase):
             agents_file.write_text("# Agents\n", encoding="utf-8")
             workspace_root = base / "workspaces"
             task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
-            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess()), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
                 run_one(
                     fixture=fixture,
                     agents_file=agents_file,
@@ -156,6 +183,77 @@ class RunnerVariantTests(unittest.TestCase):
                 )
             self.assertTrue(workspace_root.exists())
             self.assertFalse((workspace_root / "task__agents__r1").exists())
+
+    def test_run_one_progress_events_stay_out_of_artifacts(self) -> None:
+        class FakeResult:
+            returncode = 0
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = base / "fixture"
+            fixture.mkdir()
+            agents_file = fixture / "AGENTS.md"
+            agents_file.write_text("# Agents\n", encoding="utf-8")
+            events: list[dict[str, object]] = []
+            task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
+            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess(["timeout", 0])), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+                run_one(
+                    fixture=fixture,
+                    agents_file=agents_file,
+                    agents_dir=None,
+                    model="model",
+                    out=base / "results",
+                    task=task,
+                    variant="agents",
+                    repeat=1,
+                    run_order=1,
+                    progress=events.append,
+                    heartbeat_interval=0.01,
+                    total_runs=1,
+                )
+            event_names = [event["event"] for event in events]
+            self.assertEqual(event_names, ["run_start", "run_heartbeat", "run_done"])
+            run_dir = base / "results" / "task__agents__r1"
+            artifact_text = "\n".join(path.read_text(encoding="utf-8") for path in (run_dir / name for name in ("meta.json", "codex.jsonl", "stderr.log", "exit_code.txt", "time.json")))
+            self.assertNotIn("run_heartbeat", artifact_text)
+            self.assertNotIn("[tokenmessung]", artifact_text)
+
+    def test_run_one_timeout_records_nonzero_exit(self) -> None:
+        class FakeResult:
+            returncode = 0
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = base / "fixture"
+            fixture.mkdir()
+            agents_file = fixture / "AGENTS.md"
+            agents_file.write_text("# Agents\n", encoding="utf-8")
+            events: list[dict[str, object]] = []
+            task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
+            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess(["timeout", 0])), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+                run_one(
+                    fixture=fixture,
+                    agents_file=agents_file,
+                    agents_dir=None,
+                    model="model",
+                    out=base / "results",
+                    task=task,
+                    variant="agents",
+                    repeat=1,
+                    run_order=1,
+                    progress=events.append,
+                    heartbeat_interval=0.01,
+                    max_run_seconds=0.0,
+                )
+            run_dir = base / "results" / "task__agents__r1"
+            self.assertEqual((run_dir / "exit_code.txt").read_text(encoding="utf-8"), "124\n")
+            self.assertIn("run_timeout", [event["event"] for event in events])
+
+    def test_selected_tasks_filters_known_ids(self) -> None:
+        tasks = selected_tasks(["login_test_failure"])
+        self.assertEqual([task["id"] for task in tasks], ["login_test_failure"])
+        with self.assertRaises(ValueError):
+            selected_tasks(["missing"])
 
 
 if __name__ == "__main__":

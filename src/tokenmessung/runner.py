@@ -9,10 +9,13 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .analyzer import analyze_results
 from .schemas import OUTPUT_SCHEMA, TASKS
+
+ProgressCallback = Callable[[dict[str, Any]], None]
+PROCESS_TIMEOUT_EXIT_CODE = 124
 
 
 def command_output(args: list[str], cwd: Path | None = None) -> str:
@@ -141,6 +144,69 @@ def write_output_schema(run_dir: Path) -> Path:
     return schema_path
 
 
+def selected_tasks(task_ids: list[str] | None = None) -> list[dict[str, Any]]:
+    if not task_ids:
+        return list(TASKS)
+    by_id = {task["id"]: task for task in TASKS}
+    missing = [task_id for task_id in task_ids if task_id not in by_id]
+    if missing:
+        raise ValueError(f"Unknown task id(s): {', '.join(missing)}")
+    return [by_id[task_id] for task_id in task_ids]
+
+
+def emit_progress(progress: ProgressCallback | None, event: dict[str, Any]) -> None:
+    if progress is not None:
+        progress(event)
+
+
+def stop_process(process: subprocess.Popen[Any]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def wait_for_codex_process(
+    process: subprocess.Popen[Any],
+    *,
+    run_id: str,
+    started: float,
+    progress: ProgressCallback | None,
+    heartbeat_interval: float,
+    max_run_seconds: float | None,
+) -> int:
+    while True:
+        elapsed = time.monotonic() - started
+        wait_timeout = heartbeat_interval
+        if max_run_seconds is not None:
+            remaining = max_run_seconds - elapsed
+            if remaining <= 0:
+                stop_process(process)
+                emit_progress(progress, {"event": "run_timeout", "run_id": run_id, "elapsed_seconds": round(elapsed, 1), "max_run_seconds": max_run_seconds})
+                return PROCESS_TIMEOUT_EXIT_CODE
+            wait_timeout = min(heartbeat_interval, remaining)
+        try:
+            return process.wait(timeout=wait_timeout)
+        except subprocess.TimeoutExpired:
+            elapsed = time.monotonic() - started
+            if max_run_seconds is not None and elapsed >= max_run_seconds:
+                stop_process(process)
+                emit_progress(progress, {"event": "run_timeout", "run_id": run_id, "elapsed_seconds": round(elapsed, 1), "max_run_seconds": max_run_seconds})
+                return PROCESS_TIMEOUT_EXIT_CODE
+            emit_progress(
+                progress,
+                {
+                    "event": "run_heartbeat",
+                    "run_id": run_id,
+                    "elapsed_seconds": round(time.monotonic() - started, 1),
+                },
+            )
+
+
 def run_one(
     *,
     fixture: Path,
@@ -154,6 +220,10 @@ def run_one(
     run_order: int,
     keep_workdirs: bool = False,
     workspace_root: Path | None = None,
+    progress: ProgressCallback | None = None,
+    heartbeat_interval: float = 10.0,
+    total_runs: int | None = None,
+    max_run_seconds: float | None = None,
 ) -> None:
     run_id = f"{task['id']}__{variant}__r{repeat}"
     run_dir = out / run_id
@@ -244,20 +314,61 @@ def run_one(
 
     env = os.environ.copy()
     env["CODEX_HOME"] = str(codex_home)
+    emit_progress(
+        progress,
+        {
+            "event": "run_start",
+            "run_id": run_id,
+            "task_id": task["id"],
+            "variant": variant,
+            "repeat": repeat,
+            "run_order": run_order,
+            "total_runs": total_runs,
+        },
+    )
     started = time.monotonic()
+    exit_code: int | None = None
     try:
         with jsonl_path.open("w", encoding="utf-8") as jsonl, stderr_path.open("w", encoding="utf-8") as stderr:
-            process = subprocess.run(command, cwd=workdir, env=env, text=True, stdout=jsonl, stderr=stderr)
-        exit_code_path.write_text(f"{process.returncode}\n", encoding="utf-8")
+            process = subprocess.Popen(command, cwd=workdir, env=env, text=True, stdout=jsonl, stderr=stderr)
+            try:
+                exit_code = wait_for_codex_process(
+                    process,
+                    run_id=run_id,
+                    started=started,
+                    progress=progress,
+                    heartbeat_interval=heartbeat_interval,
+                    max_run_seconds=max_run_seconds,
+                )
+            except BaseException:
+                stop_process(process)
+                raise
+        exit_code_path.write_text(f"{exit_code}\n", encoding="utf-8")
     finally:
         ended = time.monotonic()
-        time_path.write_text(json.dumps({"wall_seconds": ended - started}, indent=2) + "\n", encoding="utf-8")
+        wall_seconds = ended - started
+        time_path.write_text(json.dumps({"wall_seconds": wall_seconds}, indent=2) + "\n", encoding="utf-8")
         if keep_workdirs:
             meta["workdir_cleanup"] = "kept"
         else:
             shutil.rmtree(workspace_parent, ignore_errors=True)
             meta["workdir_cleanup"] = "removed" if not workspace_parent.exists() else "failed"
         (run_dir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        if exit_code is not None:
+            emit_progress(
+                progress,
+                {
+                    "event": "run_done",
+                    "run_id": run_id,
+                    "task_id": task["id"],
+                    "variant": variant,
+                    "repeat": repeat,
+                    "run_order": run_order,
+                    "total_runs": total_runs,
+                    "exit_code": exit_code,
+                    "wall_seconds": round(wall_seconds, 1),
+                },
+            )
 
 
 def run_benchmark(
@@ -270,15 +381,22 @@ def run_benchmark(
     keep_workdirs: bool = False,
     agents_dir: Path | None = None,
     workspace_root: Path | None = None,
+    progress: ProgressCallback | None = None,
+    heartbeat_interval: float = 10.0,
+    max_run_seconds: float | None = None,
+    task_ids: list[str] | None = None,
 ) -> dict[str, Path]:
     validate_benchmark_inputs(fixture, agents_file, repeats, agents_dir=agents_dir)
     out.mkdir(parents=True, exist_ok=True)
     if workspace_root is not None:
         workspace_root.mkdir(parents=True, exist_ok=True)
+    tasks = selected_tasks(task_ids)
     randomizer = random.Random(seed)
     run_order = 0
+    total_runs = repeats * len(tasks) * 2
+    emit_progress(progress, {"event": "benchmark_start", "total_runs": total_runs, "repeats": repeats, "task_count": len(tasks)})
     for repeat in range(1, repeats + 1):
-        for task in TASKS:
+        for task in tasks:
             variants = ["control", "agents"]
             randomizer.shuffle(variants)
             for variant in variants:
@@ -295,8 +413,15 @@ def run_benchmark(
                     run_order=run_order,
                     keep_workdirs=keep_workdirs,
                     workspace_root=workspace_root,
+                    progress=progress,
+                    heartbeat_interval=heartbeat_interval,
+                    total_runs=total_runs,
+                    max_run_seconds=max_run_seconds,
                 )
-    return analyze_results(out)
+    emit_progress(progress, {"event": "analysis_start", "results_dir": str(out)})
+    outputs = analyze_results(out)
+    emit_progress(progress, {"event": "analysis_done", "outputs": {key: str(value) for key, value in outputs.items()}})
+    return outputs
 
 
 def write_synthetic_run(run_dir: Path, task: dict[str, Any], variant: str, repeat: int, run_order: int, rng: random.Random) -> None:
