@@ -24,12 +24,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_parser = bench_subparsers.add_parser("run")
     run_parser.add_argument("--fixture", required=True, type=Path)
-    run_parser.add_argument("--agents-file", required=True, type=Path)
+    agents_source = run_parser.add_mutually_exclusive_group(required=True)
+    agents_source.add_argument("--agents-file", type=Path)
+    agents_source.add_argument("--agents-dir", type=Path)
     run_parser.add_argument("--model", required=True)
     run_parser.add_argument("--repeats", type=int, default=5)
     run_parser.add_argument("--out", required=True, type=Path)
     run_parser.add_argument("--seed", type=int)
     run_parser.add_argument("--keep-workdirs", action="store_true")
+    run_parser.add_argument("--workspace-root", type=Path)
 
     analyze_parser = bench_subparsers.add_parser("analyze")
     analyze_parser.add_argument("--results", required=True, type=Path)
@@ -53,7 +56,17 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"fixture": str(path)}, indent=2))
         return 0
     if args.command == "bench" and args.bench_command == "run":
-        paths = run_benchmark(args.fixture, args.agents_file, args.model, args.repeats, args.out, seed=args.seed, keep_workdirs=args.keep_workdirs)
+        paths = run_benchmark(
+            args.fixture,
+            args.agents_file,
+            args.model,
+            args.repeats,
+            args.out,
+            seed=args.seed,
+            keep_workdirs=args.keep_workdirs,
+            agents_dir=args.agents_dir,
+            workspace_root=args.workspace_root,
+        )
         print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
         return 0
     if args.command == "bench" and args.bench_command == "analyze":

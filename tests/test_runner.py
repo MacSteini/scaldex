@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tokenmessung.fixture import create_fixture
-from tokenmessung.runner import copy_fixture, install_agents_file, remove_control_instructions, run_one, synthesize_benchmark, validate_benchmark_inputs
+from tokenmessung.runner import copy_fixture, install_agents_dir, install_agents_file, remove_control_instructions, run_one, synthesize_benchmark, validate_benchmark_inputs
 
 
 class RunnerVariantTests(unittest.TestCase):
@@ -17,10 +17,12 @@ class RunnerVariantTests(unittest.TestCase):
             (fixture / ".codex").mkdir()
             (fixture / ".codex" / "config.toml").write_text("model = 'x'\n", encoding="utf-8")
             (fixture / ".codex-project").mkdir()
+            (fixture / "AGENTS.override.md").write_text("# Override\n", encoding="utf-8")
             workdir = base / "work"
             copy_fixture(fixture, workdir)
             remove_control_instructions(workdir)
             self.assertFalse((workdir / "AGENTS.md").exists())
+            self.assertFalse((workdir / "AGENTS.override.md").exists())
             self.assertFalse((workdir / ".codex").exists())
             self.assertFalse((workdir / ".codex-project").exists())
 
@@ -35,6 +37,22 @@ class RunnerVariantTests(unittest.TestCase):
             install_agents_file(workdir, agents_file)
             self.assertEqual((workdir / "AGENTS.md").read_text(encoding="utf-8"), "# Custom\n")
 
+    def test_agents_dir_installs_instruction_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = create_fixture(base / "fixture")
+            workdir = base / "work"
+            subject = base / "subject"
+            (subject / ".codex").mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            (subject / "AGENTS.override.md").write_text("# Override\n", encoding="utf-8")
+            (subject / ".codex" / "instructions.md").write_text("# Support\n", encoding="utf-8")
+            copy_fixture(fixture, workdir)
+            install_agents_dir(workdir, subject)
+            self.assertEqual((workdir / "AGENTS.md").read_text(encoding="utf-8"), "# Agents\n")
+            self.assertEqual((workdir / "AGENTS.override.md").read_text(encoding="utf-8"), "# Override\n")
+            self.assertTrue((workdir / ".codex" / "instructions.md").exists())
+
     def test_validate_rejects_invalid_repeats_before_paid_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -42,6 +60,16 @@ class RunnerVariantTests(unittest.TestCase):
             agents_file = fixture / "AGENTS.md"
             with self.assertRaises(ValueError):
                 validate_benchmark_inputs(fixture, agents_file, 0)
+
+    def test_validate_rejects_missing_or_conflicting_agents_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = create_fixture(base / "fixture")
+            agents_file = fixture / "AGENTS.md"
+            with self.assertRaises(ValueError):
+                validate_benchmark_inputs(fixture, None, 1, require_api_key=False)
+            with self.assertRaises(ValueError):
+                validate_benchmark_inputs(fixture, agents_file, 1, require_api_key=False, agents_dir=fixture)
 
     def test_validate_rejects_non_git_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -52,6 +80,16 @@ class RunnerVariantTests(unittest.TestCase):
             agents_file.write_text("# Agents\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 validate_benchmark_inputs(fixture, agents_file, 1, require_api_key=False)
+
+    def test_validate_accepts_agents_dir_with_agents_md(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = create_fixture(base / "fixture")
+            subject = base / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            with patch("tokenmessung.runner.codex_exec_capabilities", return_value={"supports_json": True, "supports_output_schema": True, "supports_ignore_user_config": True, "supports_ignore_rules": True}):
+                validate_benchmark_inputs(fixture, None, 1, require_api_key=False, agents_dir=subject)
 
     def test_validate_rejects_missing_api_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -84,12 +122,40 @@ class RunnerVariantTests(unittest.TestCase):
             agents_file = fixture / "AGENTS.md"
             task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
             with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
-                run_one(fixture=fixture, agents_file=agents_file, model="model", out=base / "results", task=task, variant="agents", repeat=1, run_order=1)
+                run_one(fixture=fixture, agents_file=agents_file, agents_dir=None, model="model", out=base / "results", task=task, variant="agents", repeat=1, run_order=1)
                 removed_meta = (base / "results" / "task__agents__r1" / "meta.json").read_text(encoding="utf-8")
                 self.assertIn('"workdir_cleanup": "removed"', removed_meta)
-                run_one(fixture=fixture, agents_file=agents_file, model="model", out=base / "keep", task=task, variant="agents", repeat=1, run_order=1, keep_workdirs=True)
+                run_one(fixture=fixture, agents_file=agents_file, agents_dir=None, model="model", out=base / "keep", task=task, variant="agents", repeat=1, run_order=1, keep_workdirs=True)
                 kept_meta = (base / "keep" / "task__agents__r1" / "meta.json").read_text(encoding="utf-8")
                 self.assertIn('"workdir_cleanup": "kept"', kept_meta)
+
+    def test_workspace_root_contains_and_cleans_workspaces(self) -> None:
+        class FakeResult:
+            returncode = 0
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = base / "fixture"
+            fixture.mkdir()
+            agents_file = fixture / "AGENTS.md"
+            agents_file.write_text("# Agents\n", encoding="utf-8")
+            workspace_root = base / "workspaces"
+            task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
+            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+                run_one(
+                    fixture=fixture,
+                    agents_file=agents_file,
+                    agents_dir=None,
+                    model="model",
+                    out=base / "results",
+                    task=task,
+                    variant="agents",
+                    repeat=1,
+                    run_order=1,
+                    workspace_root=workspace_root,
+                )
+            self.assertTrue(workspace_root.exists())
+            self.assertFalse((workspace_root / "task__agents__r1").exists())
 
 
 if __name__ == "__main__":

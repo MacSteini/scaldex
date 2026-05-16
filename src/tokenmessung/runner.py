@@ -56,16 +56,23 @@ def codex_exec_capabilities() -> dict[str, bool]:
     }
 
 
-def validate_benchmark_inputs(fixture: Path, agents_file: Path, repeats: int, require_api_key: bool = True) -> None:
+def validate_benchmark_inputs(fixture: Path, agents_file: Path | None, repeats: int, require_api_key: bool = True, agents_dir: Path | None = None) -> None:
     if repeats < 1:
         raise ValueError("repeats must be >= 1")
+    if (agents_file is None) == (agents_dir is None):
+        raise ValueError("Provide exactly one of agents_file or agents_dir")
     if not fixture.exists():
         raise FileNotFoundError(f"Fixture does not exist: {fixture}")
     if not fixture_is_git_repo(fixture):
         raise ValueError(f"Fixture is not a Git repository: {fixture}")
     fixture_commit(fixture)
-    if not agents_file.is_file():
+    if agents_file is not None and not agents_file.is_file():
         raise FileNotFoundError(f"AGENTS file does not exist: {agents_file}")
+    if agents_dir is not None:
+        if not agents_dir.is_dir():
+            raise FileNotFoundError(f"AGENTS directory does not exist: {agents_dir}")
+        if not (agents_dir / "AGENTS.md").is_file():
+            raise FileNotFoundError(f"AGENTS directory must contain AGENTS.md: {agents_dir}")
     capabilities = codex_exec_capabilities()
     missing = [key for key, present in capabilities.items() if not present]
     if missing:
@@ -89,7 +96,7 @@ def copy_fixture(fixture: Path, workdir: Path) -> None:
 
 
 def remove_control_instructions(workdir: Path) -> None:
-    for relative in ("AGENTS.md", ".codex", ".codex-project"):
+    for relative in ("AGENTS.md", "AGENTS.override.md", ".codex", ".codex-project"):
         target = workdir / relative
         if target.is_dir():
             shutil.rmtree(target)
@@ -101,6 +108,33 @@ def install_agents_file(workdir: Path, agents_file: Path) -> None:
     shutil.copy2(agents_file, workdir / "AGENTS.md")
 
 
+def install_agents_dir(workdir: Path, agents_dir: Path) -> None:
+    for source in agents_dir.iterdir():
+        if source.name == ".git":
+            continue
+        target = workdir / source.name
+        if source.is_dir():
+            if target.exists() and not target.is_dir():
+                target.unlink()
+            shutil.copytree(source, target, ignore=shutil.ignore_patterns(".git", "__pycache__"), dirs_exist_ok=True)
+        else:
+            if target.is_dir():
+                shutil.rmtree(target)
+            shutil.copy2(source, target)
+
+
+def agents_source_size(agents_file: Path | None, agents_dir: Path | None) -> int:
+    if agents_file is not None:
+        return agents_file.stat().st_size
+    assert agents_dir is not None
+    total = 0
+    for path in agents_dir.rglob("*"):
+        if ".git" in path.parts or not path.is_file():
+            continue
+        total += path.stat().st_size
+    return total
+
+
 def write_output_schema(run_dir: Path) -> Path:
     schema_path = run_dir / "output_schema.json"
     schema_path.write_text(json.dumps(OUTPUT_SCHEMA, indent=2) + "\n", encoding="utf-8")
@@ -110,7 +144,8 @@ def write_output_schema(run_dir: Path) -> Path:
 def run_one(
     *,
     fixture: Path,
-    agents_file: Path,
+    agents_file: Path | None,
+    agents_dir: Path | None,
     model: str,
     out: Path,
     task: dict[str, Any],
@@ -118,19 +153,31 @@ def run_one(
     repeat: int,
     run_order: int,
     keep_workdirs: bool = False,
+    workspace_root: Path | None = None,
 ) -> None:
     run_id = f"{task['id']}__{variant}__r{repeat}"
     run_dir = out / run_id
     if run_dir.exists():
         shutil.rmtree(run_dir)
     run_dir.mkdir(parents=True)
-    workspace_parent = Path(tempfile.mkdtemp(prefix=f"tokenmessung-{run_id}-"))
+    if workspace_root is None:
+        workspace_parent = Path(tempfile.mkdtemp(prefix=f"tokenmessung-{run_id}-"))
+    else:
+        workspace_parent = workspace_root / run_id
+        if workspace_parent.exists():
+            shutil.rmtree(workspace_parent)
+        workspace_parent.mkdir(parents=True)
     workdir = workspace_parent / "repo"
     copy_fixture(fixture, workdir)
     if variant == "control":
         remove_control_instructions(workdir)
     elif variant == "agents":
-        install_agents_file(workdir, agents_file)
+        if agents_dir is not None:
+            install_agents_dir(workdir, agents_dir)
+        elif agents_file is not None:
+            install_agents_file(workdir, agents_file)
+        else:
+            raise ValueError("agents variant requires agents_file or agents_dir")
     else:
         raise ValueError(f"Unknown variant: {variant}")
 
@@ -179,10 +226,13 @@ def run_one(
         "model": model,
         "fixture": str(fixture),
         "fixture_commit": fixture_commit(fixture),
-        "agents_file": str(agents_file),
-        "agents_file_bytes": agents_file.stat().st_size,
+        "agents_source_type": "dir" if agents_dir is not None else "file",
+        "agents_file": str(agents_file) if agents_file is not None else "",
+        "agents_dir": str(agents_dir) if agents_dir is not None else "",
+        "agents_file_bytes": agents_source_size(agents_file, agents_dir),
         "workdir": str(workdir),
         "workspace_parent": str(workspace_parent),
+        "workspace_root": str(workspace_root) if workspace_root is not None else "",
         "codex_home": str(codex_home),
         "codex_version": codex_version(),
         "python_version": sys.version.split()[0],
@@ -210,9 +260,21 @@ def run_one(
         (run_dir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
 
-def run_benchmark(fixture: Path, agents_file: Path, model: str, repeats: int, out: Path, seed: int | None = None, keep_workdirs: bool = False) -> dict[str, Path]:
-    validate_benchmark_inputs(fixture, agents_file, repeats)
+def run_benchmark(
+    fixture: Path,
+    agents_file: Path | None,
+    model: str,
+    repeats: int,
+    out: Path,
+    seed: int | None = None,
+    keep_workdirs: bool = False,
+    agents_dir: Path | None = None,
+    workspace_root: Path | None = None,
+) -> dict[str, Path]:
+    validate_benchmark_inputs(fixture, agents_file, repeats, agents_dir=agents_dir)
     out.mkdir(parents=True, exist_ok=True)
+    if workspace_root is not None:
+        workspace_root.mkdir(parents=True, exist_ok=True)
     randomizer = random.Random(seed)
     run_order = 0
     for repeat in range(1, repeats + 1):
@@ -224,6 +286,7 @@ def run_benchmark(fixture: Path, agents_file: Path, model: str, repeats: int, ou
                 run_one(
                     fixture=fixture,
                     agents_file=agents_file,
+                    agents_dir=agents_dir,
                     model=model,
                     out=out,
                     task=task,
@@ -231,6 +294,7 @@ def run_benchmark(fixture: Path, agents_file: Path, model: str, repeats: int, ou
                     repeat=repeat,
                     run_order=run_order,
                     keep_workdirs=keep_workdirs,
+                    workspace_root=workspace_root,
                 )
     return analyze_results(out)
 

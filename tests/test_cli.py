@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import json
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 from tokenmessung.cli import main
@@ -59,6 +59,33 @@ class CliTests(unittest.TestCase):
             code, payload = self.run_cli(["bench", "doctor", "--require-api-key"])
         self.assertEqual(code, 0)
         self.assertTrue(payload["codex_api_key_present"])
+
+    def test_bench_run_requires_one_agents_source(self) -> None:
+        output = io.StringIO()
+        error = io.StringIO()
+        with self.assertRaises(SystemExit), redirect_stdout(output), redirect_stderr(error):
+            main(["bench", "run", "--fixture", "fixture", "--model", "model", "--out", "results"])
+
+    def test_bench_run_rejects_conflicting_agents_sources(self) -> None:
+        output = io.StringIO()
+        error = io.StringIO()
+        with self.assertRaises(SystemExit), redirect_stdout(output), redirect_stderr(error):
+            main(
+                [
+                    "bench",
+                    "run",
+                    "--fixture",
+                    "fixture",
+                    "--agents-file",
+                    "AGENTS.md",
+                    "--agents-dir",
+                    "subject",
+                    "--model",
+                    "model",
+                    "--out",
+                    "results",
+                ]
+            )
 
 
 if __name__ == "__main__":
