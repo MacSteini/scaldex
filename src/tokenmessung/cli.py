@@ -40,7 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     synthesize_parser.add_argument("--repeats", type=int, default=5)
     synthesize_parser.add_argument("--seed", type=int)
 
-    bench_subparsers.add_parser("doctor")
+    doctor_parser = bench_subparsers.add_parser("doctor")
+    doctor_parser.add_argument("--require-api-key", action="store_true")
     return parser
 
 
@@ -67,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
         checks = doctor()
         print(json.dumps(checks, indent=2, sort_keys=True))
         required = ["git", "codex", "supports_json", "supports_output_schema", "supports_ignore_user_config", "supports_ignore_rules"]
+        if args.require_api_key:
+            required.append("codex_api_key_present")
         return 0 if all(checks.get(key) for key in required) else 1
     parser.error("Unhandled command")
     return 2
