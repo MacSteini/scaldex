@@ -353,6 +353,8 @@ def run_one(
         else:
             shutil.rmtree(workspace_parent, ignore_errors=True)
             meta["workdir_cleanup"] = "removed" if not workspace_parent.exists() else "failed"
+        schema_path.unlink(missing_ok=True)
+        shutil.rmtree(codex_home, ignore_errors=True)
         (run_dir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
         if exit_code is not None:
             emit_progress(
@@ -385,6 +387,7 @@ def run_benchmark(
     heartbeat_interval: float = 10.0,
     max_run_seconds: float | None = None,
     task_ids: list[str] | None = None,
+    analysis_dir: Path | None = None,
 ) -> dict[str, Path]:
     validate_benchmark_inputs(fixture, agents_file, repeats, agents_dir=agents_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -419,7 +422,7 @@ def run_benchmark(
                     max_run_seconds=max_run_seconds,
                 )
     emit_progress(progress, {"event": "analysis_start", "results_dir": str(out)})
-    outputs = analyze_results(out)
+    outputs = analyze_results(out, output_dir=analysis_dir)
     emit_progress(progress, {"event": "analysis_done", "outputs": {key: str(value) for key, value in outputs.items()}})
     return outputs
 

@@ -33,6 +33,36 @@ class Cwd:
         os.chdir(self.previous)
 
 
+def write_fake_outputs(root: Path) -> dict[str, Path]:
+    run_dir = root / "tokenmessung-run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    summary = run_dir / "summary.json"
+    summary.write_text(json.dumps({"runs": 0}), encoding="utf-8")
+    summary_csv = run_dir / "summary.csv"
+    summary_csv.write_text("run_id\n", encoding="utf-8")
+    deltas = run_dir / "paired-deltas.csv"
+    deltas.write_text("task_id\n", encoding="utf-8")
+    result_json = run_dir / "result.json"
+    result_json.write_text(
+        json.dumps(
+            {
+                "verdict": "effective",
+                "primary_delta": {"agents_minus_control": -10, "percent": -10.0},
+                "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+                "warnings": [],
+                "artifacts": {
+                    "result_json": str(result_json),
+                    "result_md": str(run_dir / "RESULT.md"),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    result_md = run_dir / "RESULT.md"
+    result_md.write_text("# Tokenmessung Result\n", encoding="utf-8")
+    return {"summary_json": summary, "summary_csv": summary_csv, "paired_deltas_csv": deltas, "result_json": result_json, "result_md": result_md}
+
+
 class RootRunnerTests(unittest.TestCase):
     def test_missing_subject_agents_exits_cleanly(self) -> None:
         module = load_root_runner()
@@ -62,15 +92,11 @@ class RootRunnerTests(unittest.TestCase):
                     progress({"event": "analysis_done"})
                 self.assertEqual(kwargs["task_ids"], ["login_test_failure"])
                 self.assertEqual(kwargs["max_run_seconds"], 300.0)
-                results = root / "tokenmessung-run" / "results"
-                results.mkdir(parents=True, exist_ok=True)
-                summary = results / "summary.json"
-                summary.write_text(json.dumps({"runs": 0}), encoding="utf-8")
-                summary_csv = results / "summary.csv"
-                summary_csv.write_text("run_id\n", encoding="utf-8")
-                deltas = results / "paired-deltas.csv"
-                deltas.write_text("task_id\n", encoding="utf-8")
-                return {"summary_json": summary, "summary_csv": summary_csv, "paired_deltas_csv": deltas}
+                self.assertEqual(kwargs["analysis_dir"], (root / "tokenmessung-run").resolve())
+                self.assertEqual(args[0], (root / "tokenmessung-run" / "raw" / "fixture").resolve())
+                self.assertEqual(args[4], (root / "tokenmessung-run" / "raw" / "results").resolve())
+                self.assertEqual(kwargs["workspace_root"], (root / "tokenmessung-run" / "raw" / "workspaces").resolve())
+                return write_fake_outputs(root)
 
             output = io.StringIO()
             error = io.StringIO()
@@ -79,6 +105,7 @@ class RootRunnerTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("Run 1/2 startet", error.getvalue())
             self.assertNotIn("sk-test-secret", error.getvalue())
+            self.assertIn("Verdict: effective", output.getvalue())
             for path in (root / "tokenmessung-run").rglob("*"):
                 if path.is_file():
                     text = path.read_text(encoding="utf-8")
@@ -96,15 +123,7 @@ class RootRunnerTests(unittest.TestCase):
 
             def fake_run_benchmark(*args: object, **kwargs: object) -> dict[str, Path]:
                 self.assertIsNone(kwargs["task_ids"])
-                results = root / "tokenmessung-run" / "results"
-                results.mkdir(parents=True, exist_ok=True)
-                summary = results / "summary.json"
-                summary.write_text(json.dumps({"runs": 0}), encoding="utf-8")
-                summary_csv = results / "summary.csv"
-                summary_csv.write_text("run_id\n", encoding="utf-8")
-                deltas = results / "paired-deltas.csv"
-                deltas.write_text("task_id\n", encoding="utf-8")
-                return {"summary_json": summary, "summary_csv": summary_csv, "paired_deltas_csv": deltas}
+                return write_fake_outputs(root)
 
             with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch.object(module, "create_fixture"), patch.object(module, "run_benchmark", side_effect=fake_run_benchmark):
                 self.assertEqual(module.main(["--model", "model", "--all-tasks"]), 0)

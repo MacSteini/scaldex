@@ -11,4 +11,4 @@ mkdir -p subject
 python3 run_tokenmessung.py --model gpt-5.4
 ```
 
-The default is a low-cost smoke run with one task pair. Use `--all-tasks` only for the full run. The script asks for `CODEX_API_KEY` when unset and writes results to `tokenmessung-run/`; delete the whole folder when done.
+The default is a low-cost smoke run with one task pair. Use `--all-tasks` only for the full run. Read `tokenmessung-run/RESULT.md` first; raw audit data is under `tokenmessung-run/raw/`.

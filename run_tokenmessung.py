@@ -80,6 +80,39 @@ def render_progress(event: dict[str, object]) -> None:
         status("Analyse fertig.")
 
 
+def format_delta(value: object) -> str:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "n/a"
+    if numeric.is_integer():
+        return f"{int(numeric):,}"
+    return f"{numeric:,.1f}"
+
+
+def print_result(result: dict[str, object]) -> None:
+    primary = result.get("primary_delta", {})
+    quality = result.get("quality", {})
+    warnings = result.get("warnings", [])
+    artifacts = result.get("artifacts", {})
+    percent = primary.get("percent") if isinstance(primary, dict) else None
+    percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
+    print("\n=== Tokenmessung Ergebnis ===")
+    print(f"Verdict: {result.get('verdict', 'unknown')}")
+    if isinstance(primary, dict):
+        print(f"Non-cached input delta: {format_delta(primary.get('agents_minus_control'))} ({percent_text})")
+    if isinstance(quality, dict):
+        print(f"Quality: agents {quality.get('agents_success_rate', 'n/a')} / control {quality.get('control_success_rate', 'n/a')}")
+    if warnings:
+        print("Warnings: " + ", ".join(str(warning) for warning in warnings))
+    else:
+        print("Warnings: none")
+    if isinstance(artifacts, dict):
+        print(f"Human report: {artifacts.get('result_md')}")
+        print(f"Machine report: {artifacts.get('result_json')}")
+    print()
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.all_tasks and args.task_ids:
@@ -91,10 +124,10 @@ def main(argv: list[str] | None = None) -> int:
     status(f"Subject geprüft: {subject_dir}")
 
     run_dir = (root / args.run_dir).resolve()
-    fixture_dir = run_dir / "fixture"
-    results_dir = run_dir / "results"
-    workspaces_dir = run_dir / "workspaces"
-    report_path = run_dir / "report.json"
+    raw_dir = run_dir / "raw"
+    fixture_dir = raw_dir / "fixture"
+    results_dir = raw_dir / "results"
+    workspaces_dir = raw_dir / "workspaces"
 
     key_source = ensure_api_key()
     status("API-Key aus Umgebung erkannt." if key_source == "env" else "API-Key lokal eingegeben.")
@@ -121,27 +154,23 @@ def main(argv: list[str] | None = None) -> int:
         heartbeat_interval=args.heartbeat_seconds,
         max_run_seconds=args.max_run_seconds,
         task_ids=task_ids,
+        analysis_dir=run_dir,
     )
-    summary = json.loads(outputs["summary_json"].read_text(encoding="utf-8"))
-    report = {
-        "model": args.model,
-        "repeats": args.repeats,
-        "seed": args.seed,
-        "task_ids": task_ids,
+    result = json.loads(outputs["result_json"].read_text(encoding="utf-8"))
+    result["run_config"] = {
         "all_tasks": args.all_tasks,
         "heartbeat_seconds": args.heartbeat_seconds,
         "max_run_seconds": args.max_run_seconds,
+        "model": args.model,
+        "repeats": args.repeats,
+        "seed": args.seed,
         "subject_dir": str(subject_dir),
-        "fixture_dir": str(fixture_dir),
-        "results_dir": str(results_dir),
-        "workspaces_dir": str(workspaces_dir),
-        "outputs": {key: str(value) for key, value in outputs.items()},
-        "summary": summary,
+        "task_ids": task_ids,
     }
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    status(f"Report fertig nach {round(time.monotonic() - started, 1)}s: {report_path}")
-    print(json.dumps({"report": str(report_path), **report["outputs"]}, indent=2))
+    result["artifacts"]["raw_dir"] = str(raw_dir)
+    outputs["result_json"].write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    status(f"Report fertig nach {round(time.monotonic() - started, 1)}s: {outputs['result_md']}")
+    print_result(result)
     return 0
 
 

@@ -217,6 +217,8 @@ class RunnerVariantTests(unittest.TestCase):
             artifact_text = "\n".join(path.read_text(encoding="utf-8") for path in (run_dir / name for name in ("meta.json", "codex.jsonl", "stderr.log", "exit_code.txt", "time.json")))
             self.assertNotIn("run_heartbeat", artifact_text)
             self.assertNotIn("[tokenmessung]", artifact_text)
+            self.assertFalse((run_dir / "output_schema.json").exists())
+            self.assertFalse((run_dir / "codex-home").exists())
 
     def test_run_one_timeout_records_nonzero_exit(self) -> None:
         class FakeResult:

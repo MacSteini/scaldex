@@ -9,6 +9,13 @@ from statistics import median
 from typing import Any, Iterable
 
 LARGE_TEXT_BYTES = 20_000
+CRITICAL_WARNING_PREFIXES = (
+    "incomplete_pair:",
+    "missing_turn_completed_usage",
+    "invalid_final_json",
+    "nonzero_exit_code",
+    "missing_expected_files",
+)
 
 RISKY_FULL_READ_PATTERNS = [
     re.compile(r"\bcat\b"),
@@ -240,6 +247,7 @@ def aggregate(rows: list[dict[str, Any]], deltas: list[dict[str, Any]], analysis
         "output_tokens",
         "reasoning_output_tokens",
         "total_observed_tokens",
+        "wall_seconds",
         "command_count",
         "targeted_steps",
         "risky_full_reads",
@@ -272,7 +280,7 @@ def paired_deltas(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         except (TypeError, ValueError):
             continue
         pairs[(str(row["task_id"]), repeat)][str(row["variant"])] = row
-    delta_keys = ["non_cached_input_tokens", "total_observed_tokens", "stdout_bytes", "stderr_bytes", "command_count", "risky_full_reads"]
+    delta_keys = ["non_cached_input_tokens", "total_observed_tokens", "wall_seconds", "stdout_bytes", "stderr_bytes", "command_count", "risky_full_reads"]
     deltas: list[dict[str, Any]] = []
     for (task_id, repeat), pair in sorted(pairs.items()):
         if "agents" not in pair or "control" not in pair:
@@ -301,10 +309,167 @@ def incomplete_pair_warnings(rows: list[dict[str, Any]]) -> list[str]:
     return warnings
 
 
-def analyze_results(results: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[str, Path]:
+def number(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def percent_delta(delta: float, baseline: float) -> float | None:
+    if baseline == 0:
+        return None
+    return delta / baseline * 100
+
+
+def median_delta(summary: dict[str, Any], key: str) -> float:
+    return number(summary.get("paired_median_deltas", {}).get(f"median_delta_{key}_agents_minus_control"))
+
+
+def variant_median(summary: dict[str, Any], variant: str, key: str) -> float:
+    return number(summary.get("variants", {}).get(variant, {}).get(f"median_{key}"))
+
+
+def success_rate(summary: dict[str, Any], variant: str) -> float:
+    return number(summary.get("variants", {}).get(variant, {}).get("success_rate"))
+
+
+def has_critical_warnings(warnings: list[str]) -> bool:
+    return any(any(warning.startswith(prefix) for prefix in CRITICAL_WARNING_PREFIXES) for warning in warnings)
+
+
+def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    warnings = list(summary.get("analysis_warnings", []))
+    control_non_cached = variant_median(summary, "control", "non_cached_input_tokens")
+    agents_non_cached = variant_median(summary, "agents", "non_cached_input_tokens")
+    non_cached_delta = median_delta(summary, "non_cached_input_tokens")
+    total_delta = median_delta(summary, "total_observed_tokens")
+    wall_delta = median_delta(summary, "wall_seconds")
+    command_delta = median_delta(summary, "command_count")
+    risky_delta = median_delta(summary, "risky_full_reads")
+    agents_success = success_rate(summary, "agents")
+    control_success = success_rate(summary, "control")
+
+    secondary_warnings: list[str] = []
+    control_total = variant_median(summary, "control", "total_observed_tokens")
+    control_wall = variant_median(summary, "control", "wall_seconds")
+    if total_delta > max(1000.0, control_total * 0.10):
+        secondary_warnings.append("total_observed_tokens_increased")
+    if wall_delta > max(5.0, control_wall * 0.20):
+        secondary_warnings.append("wall_time_increased")
+    if command_delta > 0:
+        secondary_warnings.append("command_count_increased")
+    if risky_delta > 0:
+        secondary_warnings.append("risky_full_reads_increased")
+
+    if not deltas or has_critical_warnings(warnings) or agents_success < control_success or non_cached_delta >= 0:
+        verdict = "not_effective"
+    elif secondary_warnings:
+        verdict = "mixed"
+    else:
+        verdict = "effective"
+
+    model = rows[0].get("model", "") if rows else ""
+    codex_version = rows[0].get("codex_version", "") if rows else ""
+    fixture_commit = rows[0].get("fixture_commit", "") if rows else ""
+    task_ids = sorted({str(row.get("task_id", "")) for row in rows if row.get("task_id")})
+    repeats = sorted({int(row["repeat"]) for row in rows if str(row.get("repeat", "")).isdigit()})
+
+    return {
+        "verdict": verdict,
+        "primary_metric": "non_cached_input_tokens",
+        "primary_delta": {
+            "agents_minus_control": non_cached_delta,
+            "percent": percent_delta(non_cached_delta, control_non_cached),
+            "agents_median": agents_non_cached,
+            "control_median": control_non_cached,
+        },
+        "quality": {
+            "agents_success_rate": agents_success,
+            "control_success_rate": control_success,
+        },
+        "secondary": {
+            "total_observed_tokens_delta": total_delta,
+            "wall_seconds_delta": wall_delta,
+            "command_count_delta": command_delta,
+            "risky_full_reads_delta": risky_delta,
+        },
+        "warnings": warnings + secondary_warnings,
+        "analysis_warnings": warnings,
+        "secondary_warnings": secondary_warnings,
+        "context": {
+            "runs": summary.get("runs", 0),
+            "model": model,
+            "codex_version": codex_version,
+            "fixture_commit": fixture_commit,
+            "task_ids": task_ids,
+            "repeats": repeats,
+        },
+    }
+
+
+def format_number(value: Any) -> str:
+    numeric = number(value)
+    if numeric.is_integer():
+        return f"{int(numeric):,}"
+    return f"{numeric:,.1f}"
+
+
+def format_percent(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:+.1f}%"
+
+
+def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
+    primary = result["primary_delta"]
+    quality = result["quality"]
+    secondary = result["secondary"]
+    warnings = result["warnings"]
+    artifacts = result.get("artifacts", {})
+    raw_results_dir = artifacts.get("raw_results_dir", "raw/") if isinstance(artifacts, dict) else "raw/"
+    lines = [
+        "# Tokenmessung Result",
+        "",
+        f"Verdict: **{result['verdict']}**",
+        "",
+        "## Scorecard",
+        "",
+        "| Metric | Value |",
+        "| --- | ---: |",
+        f"| Non-cached input delta | {format_number(primary['agents_minus_control'])} ({format_percent(primary['percent'])}) |",
+        f"| Agents median non-cached input | {format_number(primary['agents_median'])} |",
+        f"| Control median non-cached input | {format_number(primary['control_median'])} |",
+        f"| Agents success rate | {quality['agents_success_rate']:.2f} |",
+        f"| Control success rate | {quality['control_success_rate']:.2f} |",
+        f"| Total observed token delta | {format_number(secondary['total_observed_tokens_delta'])} |",
+        f"| Wall time delta | {format_number(secondary['wall_seconds_delta'])}s |",
+        f"| Command count delta | {format_number(secondary['command_count_delta'])} |",
+        "",
+        "## Interpretation",
+        "",
+    ]
+    if result["verdict"] == "effective":
+        lines.append("The AGENTS bundle reduced non-cached input tokens without failing the quality and warning checks.")
+    elif result["verdict"] == "mixed":
+        lines.append("The AGENTS bundle improved the primary token metric, but one or more secondary metrics got worse.")
+    else:
+        lines.append("The AGENTS bundle did not produce a reliable improvement in this run.")
+    lines.extend(["", "## Warnings", ""])
+    if warnings:
+        lines.extend(f"- {warning}" for warning in warnings)
+    else:
+        lines.append("- None")
+    lines.extend(["", "## Raw Data", "", f"Detailed run artefacts are kept under `{raw_results_dir}` for audit and debugging."])
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def analyze_results(results: Path, large_text_bytes: int = LARGE_TEXT_BYTES, output_dir: Path | None = None) -> dict[str, Path]:
     rows = [parse_run(meta.parent, large_text_bytes=large_text_bytes) for meta in sorted(results.glob("*/meta.json"))]
     if not rows:
         raise FileNotFoundError(f"No run metadata found under {results}")
+    output = output_dir or results
+    output.mkdir(parents=True, exist_ok=True)
     rows.sort(key=lambda row: (str(row["task_id"]), int(row["repeat"]), str(row["variant"])))
     deltas = paired_deltas(rows)
     warnings = incomplete_pair_warnings(rows)
@@ -312,13 +477,32 @@ def analyze_results(results: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> 
         if row.get("analysis_warnings"):
             warnings.extend(str(row["analysis_warnings"]).split(";"))
     summary = aggregate(rows, deltas, warnings)
-    summary_csv = results / "summary.csv"
-    summary_json = results / "summary.json"
-    deltas_csv = results / "paired-deltas.csv"
+    result = build_result(summary, deltas, rows)
+    summary_csv = output / "summary.csv"
+    summary_json = output / "summary.json"
+    deltas_csv = output / "paired-deltas.csv"
+    result_json = output / "result.json"
+    result_md = output / "RESULT.md"
     write_csv(summary_csv, rows)
     summary_json.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if deltas:
         write_csv(deltas_csv, deltas)
     else:
         deltas_csv.write_text("", encoding="utf-8")
-    return {"summary_csv": summary_csv, "summary_json": summary_json, "paired_deltas_csv": deltas_csv}
+    result["artifacts"] = {
+        "result_json": str(result_json),
+        "result_md": str(result_md),
+        "summary_csv": str(summary_csv),
+        "summary_json": str(summary_json),
+        "paired_deltas_csv": str(deltas_csv),
+        "raw_results_dir": str(results),
+    }
+    result_json.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_result_markdown(result_md, result)
+    return {
+        "summary_csv": summary_csv,
+        "summary_json": summary_json,
+        "paired_deltas_csv": deltas_csv,
+        "result_json": result_json,
+        "result_md": result_md,
+    }

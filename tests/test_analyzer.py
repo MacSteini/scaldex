@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tokenmessung.analyzer import analyze_results, paired_deltas, parse_run
+from tokenmessung.analyzer import analyze_results, build_result, paired_deltas, parse_run
 
 
 def write_run(base: Path, run_id: str, variant: str, tokens: int, *, include_usage: bool = True, valid_final: bool = True, exit_code: str = "0") -> None:
@@ -77,6 +77,9 @@ class AnalyzerTests(unittest.TestCase):
             paths = analyze_results(base)
             for path in paths.values():
                 self.assertTrue(path.exists())
+            result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
+            self.assertEqual(result["verdict"], "effective")
+            self.assertTrue(paths["result_md"].read_text(encoding="utf-8").startswith("# Tokenmessung Result"))
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
             deltas = paired_deltas(rows)
             self.assertEqual(deltas[0]["delta_non_cached_input_tokens_agents_minus_control"], -300)
@@ -99,6 +102,53 @@ class AnalyzerTests(unittest.TestCase):
             summary = json.loads(paths["summary_json"].read_text(encoding="utf-8"))
             self.assertEqual(summary["variants"]["control"]["success_rate"], 1.0)
             self.assertIn("incomplete_pair:login_test_failure:r1", summary["analysis_warnings"])
+            result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
+            self.assertEqual(result["verdict"], "not_effective")
+
+    def test_build_result_reports_mixed_when_secondary_metrics_regress(self) -> None:
+        summary = {
+            "runs": 2,
+            "analysis_warnings": [],
+            "variants": {
+                "agents": {
+                    "success_rate": 1.0,
+                    "median_non_cached_input_tokens": 800,
+                    "median_total_observed_tokens": 20000,
+                    "median_wall_seconds": 30,
+                },
+                "control": {
+                    "success_rate": 1.0,
+                    "median_non_cached_input_tokens": 1000,
+                    "median_total_observed_tokens": 10000,
+                    "median_wall_seconds": 10,
+                },
+            },
+            "paired_median_deltas": {
+                "median_delta_non_cached_input_tokens_agents_minus_control": -200,
+                "median_delta_total_observed_tokens_agents_minus_control": 10000,
+                "median_delta_wall_seconds_agents_minus_control": 20,
+                "median_delta_command_count_agents_minus_control": 5,
+                "median_delta_risky_full_reads_agents_minus_control": 0,
+            },
+        }
+        result = build_result(summary, [{"task_id": "x"}], [{"model": "m", "codex_version": "c", "fixture_commit": "f", "task_id": "t", "repeat": 1}])
+        self.assertEqual(result["verdict"], "mixed")
+        self.assertIn("total_observed_tokens_increased", result["warnings"])
+
+    def test_build_result_reports_not_effective_when_primary_metric_regresses(self) -> None:
+        summary = {
+            "runs": 2,
+            "analysis_warnings": [],
+            "variants": {
+                "agents": {"success_rate": 1.0, "median_non_cached_input_tokens": 1200},
+                "control": {"success_rate": 1.0, "median_non_cached_input_tokens": 1000},
+            },
+            "paired_median_deltas": {
+                "median_delta_non_cached_input_tokens_agents_minus_control": 200,
+            },
+        }
+        result = build_result(summary, [{"task_id": "x"}], [{"task_id": "t", "repeat": 1}])
+        self.assertEqual(result["verdict"], "not_effective")
 
 
 if __name__ == "__main__":
