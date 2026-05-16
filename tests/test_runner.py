@@ -3,9 +3,10 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tokenmessung.fixture import create_fixture
-from tokenmessung.runner import copy_fixture, install_agents_file, remove_control_instructions
+from tokenmessung.runner import copy_fixture, install_agents_file, remove_control_instructions, run_one, synthesize_benchmark, validate_benchmark_inputs
 
 
 class RunnerVariantTests(unittest.TestCase):
@@ -33,6 +34,62 @@ class RunnerVariantTests(unittest.TestCase):
             copy_fixture(fixture, workdir)
             install_agents_file(workdir, agents_file)
             self.assertEqual((workdir / "AGENTS.md").read_text(encoding="utf-8"), "# Custom\n")
+
+    def test_validate_rejects_invalid_repeats_before_paid_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = create_fixture(base / "fixture")
+            agents_file = fixture / "AGENTS.md"
+            with self.assertRaises(ValueError):
+                validate_benchmark_inputs(fixture, agents_file, 0)
+
+    def test_validate_rejects_non_git_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = base / "not-git"
+            fixture.mkdir()
+            agents_file = base / "AGENTS.md"
+            agents_file.write_text("# Agents\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                validate_benchmark_inputs(fixture, agents_file, 1, require_api_key=False)
+
+    def test_validate_rejects_missing_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = create_fixture(base / "fixture")
+            agents_file = fixture / "AGENTS.md"
+            with patch.dict("os.environ", {}, clear=True), patch("tokenmessung.runner.codex_exec_capabilities", return_value={"supports_json": True, "supports_output_schema": True, "supports_ignore_user_config": True, "supports_ignore_rules": True}):
+                with self.assertRaises(EnvironmentError):
+                    validate_benchmark_inputs(fixture, agents_file, 1)
+
+    def test_synthesize_benchmark_creates_complete_paired_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "synthetic"
+            paths = synthesize_benchmark(out, repeats=2, seed=1)
+            self.assertTrue(paths["summary_csv"].exists())
+            self.assertEqual(len(list(out.glob("*/meta.json"))), 16)
+            self.assertTrue((out / "paired-deltas.csv").read_text(encoding="utf-8"))
+
+    def test_run_one_records_cleanup_default_and_keep(self) -> None:
+        class FakeResult:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = base / "fixture"
+            fixture.mkdir()
+            (fixture / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            agents_file = fixture / "AGENTS.md"
+            task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
+            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+                run_one(fixture=fixture, agents_file=agents_file, model="model", out=base / "results", task=task, variant="agents", repeat=1, run_order=1)
+                removed_meta = (base / "results" / "task__agents__r1" / "meta.json").read_text(encoding="utf-8")
+                self.assertIn('"workdir_cleanup": "removed"', removed_meta)
+                run_one(fixture=fixture, agents_file=agents_file, model="model", out=base / "keep", task=task, variant="agents", repeat=1, run_order=1, keep_workdirs=True)
+                kept_meta = (base / "keep" / "task__agents__r1" / "meta.json").read_text(encoding="utf-8")
+                self.assertIn('"workdir_cleanup": "kept"', kept_meta)
 
 
 if __name__ == "__main__":

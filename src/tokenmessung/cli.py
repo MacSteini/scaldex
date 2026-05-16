@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .analyzer import analyze_results
 from .fixture import create_fixture
-from .runner import doctor, run_benchmark
+from .runner import doctor, run_benchmark, synthesize_benchmark
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,10 +29,16 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--repeats", type=int, default=5)
     run_parser.add_argument("--out", required=True, type=Path)
     run_parser.add_argument("--seed", type=int)
+    run_parser.add_argument("--keep-workdirs", action="store_true")
 
     analyze_parser = bench_subparsers.add_parser("analyze")
     analyze_parser.add_argument("--results", required=True, type=Path)
     analyze_parser.add_argument("--large-text-bytes", type=int, default=20_000)
+
+    synthesize_parser = bench_subparsers.add_parser("synthesize")
+    synthesize_parser.add_argument("--out", required=True, type=Path)
+    synthesize_parser.add_argument("--repeats", type=int, default=5)
+    synthesize_parser.add_argument("--seed", type=int)
 
     bench_subparsers.add_parser("doctor")
     return parser
@@ -46,11 +52,15 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"fixture": str(path)}, indent=2))
         return 0
     if args.command == "bench" and args.bench_command == "run":
-        paths = run_benchmark(args.fixture, args.agents_file, args.model, args.repeats, args.out, seed=args.seed)
+        paths = run_benchmark(args.fixture, args.agents_file, args.model, args.repeats, args.out, seed=args.seed, keep_workdirs=args.keep_workdirs)
         print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
         return 0
     if args.command == "bench" and args.bench_command == "analyze":
         paths = analyze_results(args.results, large_text_bytes=args.large_text_bytes)
+        print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
+        return 0
+    if args.command == "bench" and args.bench_command == "synthesize":
+        paths = synthesize_benchmark(args.out, args.repeats, seed=args.seed)
         print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
         return 0
     if args.command == "bench" and args.bench_command == "doctor":

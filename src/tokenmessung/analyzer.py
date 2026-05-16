@@ -101,6 +101,15 @@ def load_json(path: Path, default: Any) -> Any:
         return default
 
 
+def load_json_checked(path: Path, default: Any) -> tuple[Any, bool]:
+    if not path.exists():
+        return default, False
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), True
+    except json.JSONDecodeError:
+        return default, False
+
+
 def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[str, Any]:
     meta = load_json(run_dir / "meta.json", {})
     task = meta.get("task", {})
@@ -114,6 +123,7 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
     large_text_events = 0
     first_expected_event_index: int | None = None
     all_text_fragments: list[str] = []
+    analysis_warnings: list[str] = []
 
     jsonl_path = run_dir / "codex.jsonl"
     if jsonl_path.exists():
@@ -147,19 +157,28 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
 
     if not saw_turn_completed_usage:
         usage = fallback_usage
+        analysis_warnings.append("missing_turn_completed_usage")
 
-    final = load_json(run_dir / "final.json", {})
+    final, final_valid = load_json_checked(run_dir / "final.json", {})
+    if not final_valid:
+        analysis_warnings.append("invalid_final_json")
     final_text = json.dumps(final, ensure_ascii=False)
     all_text = "\n".join(all_text_fragments) + "\n" + final_text + "\n" + "\n".join(commands)
     expected_files_found = [path for path in expected_files if path in all_text]
     expected_terms_found = [term for term in expected_terms if term in all_text]
+    final_expected_files_found = [path for path in expected_files if path in final_text]
+    final_expected_terms_found = [term for term in expected_terms if term in final_text]
     risky_full_reads = sum(1 for command in commands if any(pattern.search(command) for pattern in RISKY_FULL_READ_PATTERNS))
     targeted_steps = sum(1 for command in commands if any(pattern.search(command) for pattern in TARGETED_PATTERNS))
     exit_code = (run_dir / "exit_code.txt").read_text(encoding="utf-8").strip() if (run_dir / "exit_code.txt").exists() else ""
+    if exit_code and exit_code != "0":
+        analysis_warnings.append("nonzero_exit_code")
     time_meta = load_json(run_dir / "time.json", {})
     total_observed_tokens = usage["input_tokens"] + usage["output_tokens"] + usage["reasoning_output_tokens"]
     non_cached_input_tokens = max(usage["input_tokens"] - usage["cached_input_tokens"], 0)
-    success = bool(expected_files) and len(expected_files_found) == len(expected_files) and bool(expected_terms_found)
+    success = final_valid and bool(expected_files) and len(final_expected_files_found) == len(expected_files) and bool(final_expected_terms_found)
+    if expected_files and len(expected_files_found) != len(expected_files):
+        analysis_warnings.append("missing_expected_files")
 
     return {
         "run_id": meta.get("run_id", run_dir.name),
@@ -195,6 +214,7 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
         "first_expected_file_event_index": first_expected_event_index if first_expected_event_index is not None else "",
         "success": success,
         "confidence": final.get("confidence", "") if isinstance(final, dict) else "",
+        "analysis_warnings": ";".join(analysis_warnings),
     }
 
 
@@ -208,11 +228,11 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
-def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def aggregate(rows: list[dict[str, Any]], deltas: list[dict[str, Any]], analysis_warnings: list[str]) -> dict[str, Any]:
     by_variant: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         by_variant[str(row["variant"])].append(row)
-    summary: dict[str, Any] = {"runs": len(rows), "variants": {}}
+    summary: dict[str, Any] = {"runs": len(rows), "variants": {}, "analysis_warnings": sorted(set(analysis_warnings))}
     numeric_keys = [
         "input_tokens",
         "cached_input_tokens",
@@ -229,11 +249,18 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "expected_files_found_count",
     ]
     for variant, variant_rows in sorted(by_variant.items()):
-        metrics: dict[str, Any] = {"runs": len(variant_rows), "successes": sum(1 for row in variant_rows if row["success"])}
+        successes = sum(1 for row in variant_rows if row["success"])
+        metrics: dict[str, Any] = {"runs": len(variant_rows), "successes": successes, "success_rate": successes / len(variant_rows)}
         for key in numeric_keys:
             values = [float(row[key]) for row in variant_rows if row.get(key) not in ("", None)]
             metrics[f"median_{key}"] = median(values) if values else 0
         summary["variants"][variant] = metrics
+    paired_metrics: dict[str, float] = {}
+    if deltas:
+        for key in deltas[0]:
+            if key.startswith("delta_"):
+                paired_metrics[f"median_{key}"] = median(float(row[key]) for row in deltas)
+    summary["paired_median_deltas"] = paired_metrics
     return summary
 
 
@@ -259,13 +286,32 @@ def paired_deltas(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return deltas
 
 
+def incomplete_pair_warnings(rows: list[dict[str, Any]]) -> list[str]:
+    pairs: dict[tuple[str, int], set[str]] = defaultdict(set)
+    for row in rows:
+        try:
+            repeat = int(row["repeat"])
+        except (TypeError, ValueError):
+            continue
+        pairs[(str(row["task_id"]), repeat)].add(str(row["variant"]))
+    warnings = []
+    for (task_id, repeat), variants in sorted(pairs.items()):
+        if variants != {"agents", "control"}:
+            warnings.append(f"incomplete_pair:{task_id}:r{repeat}")
+    return warnings
+
+
 def analyze_results(results: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[str, Path]:
     rows = [parse_run(meta.parent, large_text_bytes=large_text_bytes) for meta in sorted(results.glob("*/meta.json"))]
     if not rows:
         raise FileNotFoundError(f"No run metadata found under {results}")
     rows.sort(key=lambda row: (str(row["task_id"]), int(row["repeat"]), str(row["variant"])))
-    summary = aggregate(rows)
     deltas = paired_deltas(rows)
+    warnings = incomplete_pair_warnings(rows)
+    for row in rows:
+        if row.get("analysis_warnings"):
+            warnings.extend(str(row["analysis_warnings"]).split(";"))
+    summary = aggregate(rows, deltas, warnings)
     summary_csv = results / "summary.csv"
     summary_json = results / "summary.json"
     deltas_csv = results / "paired-deltas.csv"

@@ -8,7 +8,7 @@ from pathlib import Path
 from tokenmessung.analyzer import analyze_results, paired_deltas, parse_run
 
 
-def write_run(base: Path, run_id: str, variant: str, tokens: int) -> None:
+def write_run(base: Path, run_id: str, variant: str, tokens: int, *, include_usage: bool = True, valid_final: bool = True, exit_code: str = "0") -> None:
     run = base / run_id
     run.mkdir()
     task = {
@@ -32,22 +32,26 @@ def write_run(base: Path, run_id: str, variant: str, tokens: int) -> None:
         {"type": "thread.started", "thread_id": "t"},
         {"type": "item.completed", "item": {"type": "command_execution", "command": "bash -lc 'rg passwordPolicy services/auth/src/login.ts'", "stdout": "services/auth/src/login.ts passwordPolicy"}},
         {"type": "item.completed", "item": {"type": "command_execution", "command": "bash -lc 'cat logs/app.log'", "stdout": "x" * 21000}},
-        {"type": "turn.completed", "usage": {"input_tokens": tokens, "cached_input_tokens": 100, "output_tokens": 20, "reasoning_output_tokens": 5}},
         {"type": "unknown.future", "payload": {"usage": {"input_tokens": 1}}},
     ]
+    if include_usage:
+        events.insert(3, {"type": "turn.completed", "usage": {"input_tokens": tokens, "cached_input_tokens": 100, "output_tokens": 20, "reasoning_output_tokens": 5}})
     (run / "codex.jsonl").write_text("\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8")
-    (run / "final.json").write_text(
-        json.dumps(
-            {
-                "answer": "see services/auth/src/login.ts",
-                "relevant_files": ["services/auth/src/login.ts"],
-                "root_cause_or_location": "passwordPolicy",
-                "confidence": "high",
-            }
-        ),
-        encoding="utf-8",
-    )
-    (run / "exit_code.txt").write_text("0\n", encoding="utf-8")
+    if valid_final:
+        (run / "final.json").write_text(
+            json.dumps(
+                {
+                    "answer": "see services/auth/src/login.ts",
+                    "relevant_files": ["services/auth/src/login.ts"],
+                    "root_cause_or_location": "passwordPolicy",
+                    "confidence": "high",
+                }
+            ),
+            encoding="utf-8",
+        )
+    else:
+        (run / "final.json").write_text("{not-json", encoding="utf-8")
+    (run / "exit_code.txt").write_text(f"{exit_code}\n", encoding="utf-8")
     (run / "time.json").write_text(json.dumps({"wall_seconds": 1.5}), encoding="utf-8")
 
 
@@ -76,6 +80,25 @@ class AnalyzerTests(unittest.TestCase):
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
             deltas = paired_deltas(rows)
             self.assertEqual(deltas[0]["delta_non_cached_input_tokens_agents_minus_control"], -300)
+
+    def test_parse_run_reports_analysis_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            write_run(base, "bad", "control", 1000, include_usage=False, valid_final=False, exit_code="1")
+            row = parse_run(base / "bad")
+            warnings = set(row["analysis_warnings"].split(";"))
+            self.assertIn("missing_turn_completed_usage", warnings)
+            self.assertIn("invalid_final_json", warnings)
+            self.assertIn("nonzero_exit_code", warnings)
+
+    def test_summary_contains_success_rates_and_pair_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            write_run(base, "control", "control", 1000)
+            paths = analyze_results(base)
+            summary = json.loads(paths["summary_json"].read_text(encoding="utf-8"))
+            self.assertEqual(summary["variants"]["control"]["success_rate"], 1.0)
+            self.assertIn("incomplete_pair:login_test_failure:r1", summary["analysis_warnings"])
 
 
 if __name__ == "__main__":
