@@ -54,6 +54,12 @@ def write_fake_outputs(root: Path) -> dict[str, Path]:
                 "warnings": ["large_subject"],
                 "benchmark_warnings": ["command_count_increased"],
                 "reliability": {"level": "low", "paired_runs": 1, "warnings": ["low_sample_size"]},
+                "tool_sanity": {
+                    "schema_version": 1,
+                    "run_isolation_reporting": True,
+                    "separated_warning_sections": True,
+                    "aggregated_command_output_counted": True,
+                },
                 "artifacts": {
                     "result_json": str(result_json),
                     "result_md": str(run_dir / "RESULT.md"),
@@ -117,7 +123,10 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Isolation: ~/.codex excluded = True", output.getvalue())
             self.assertIn("Subject: package", output.getvalue())
             self.assertIn("Run-Isolation: eigenes CODEX_HOME pro Run", error.getvalue())
+            self.assertIn("Tool-Sanity: schema v1", error.getvalue())
+            self.assertIn("Geplante bezahlte Codex-Runs: 2", error.getvalue())
             self.assertIn("Reliability: low (1 paired run(s))", output.getvalue())
+            self.assertIn("Tool sanity: schema v1", output.getvalue())
             self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())
             self.assertNotIn("large_subject: The tested subject package is larger than 32 KiB", output.getvalue())
             for path in (root / "tokenmessung-run").rglob("*"):
@@ -125,6 +134,13 @@ class RootRunnerTests(unittest.TestCase):
                     text = path.read_text(encoding="utf-8")
                     self.assertNotIn("sk-test-secret", text)
                     self.assertNotIn("[tokenmessung]", text)
+
+    def test_prompted_api_key_uses_prefixed_hidden_prompt(self) -> None:
+        module = load_root_runner()
+        with patch.dict("os.environ", {}, clear=True), patch.object(module.getpass, "getpass", return_value="sk-test-secret") as getpass_mock:
+            self.assertEqual(module.ensure_api_key(), "prompt")
+            self.assertEqual(os.environ.get("CODEX_API_KEY"), "sk-test-secret")
+        getpass_mock.assert_called_once_with("[tokenmessung] CODEX_API_KEY: ")
 
     def test_all_tasks_disables_low_cost_default(self) -> None:
         module = load_root_runner()

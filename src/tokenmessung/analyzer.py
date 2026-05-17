@@ -9,6 +9,12 @@ from statistics import median
 from typing import Any, Iterable
 
 LARGE_TEXT_BYTES = 20_000
+TOOL_SANITY = {
+    "schema_version": 1,
+    "run_isolation_reporting": True,
+    "separated_warning_sections": True,
+    "aggregated_command_output_counted": True,
+}
 CRITICAL_WARNING_PREFIXES = (
     "incomplete_pair:",
     "missing_turn_completed_usage",
@@ -518,6 +524,7 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "warnings": reliability_warnings,
             "warning_details": warning_details(reliability_warnings),
         },
+        "tool_sanity": dict(TOOL_SANITY),
         "context": {
             "runs": summary.get("runs", 0),
             "model": model,
@@ -565,6 +572,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     subject = result.get("subject", {})
     reliability = result.get("reliability", {})
     isolation = result.get("isolation", {})
+    tool_sanity = result.get("tool_sanity", {})
     artifacts = result.get("artifacts", {})
     raw_results_dir = artifacts.get("raw_results_dir", "raw/") if isinstance(artifacts, dict) else "raw/"
     lines = [
@@ -606,6 +614,12 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     if isinstance(reliability, dict) and reliability.get("warnings"):
         lines.append("")
         lines.append("This result is a smoke measurement. Repeat it before treating the verdict as stable.")
+    lines.extend(["", "## Tool Sanity", ""])
+    if isinstance(tool_sanity, dict):
+        lines.append(f"- Schema version: {tool_sanity.get('schema_version', 'n/a')}")
+        lines.append(f"- Run isolation reporting: {tool_sanity.get('run_isolation_reporting', False)}")
+        lines.append(f"- Separated warning sections: {tool_sanity.get('separated_warning_sections', False)}")
+        lines.append(f"- Aggregated command output counted: {tool_sanity.get('aggregated_command_output_counted', False)}")
     lines.extend(["", "## Subject", ""])
     if isinstance(subject, dict):
         lines.append(f"- Mode: `{subject.get('mode', 'n/a')}`")

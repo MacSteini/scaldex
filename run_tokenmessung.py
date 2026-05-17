@@ -13,7 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
 from tokenmessung.fixture import create_fixture  # noqa: E402
-from tokenmessung.analyzer import explain_warning, human_bytes  # noqa: E402
+from tokenmessung.analyzer import TOOL_SANITY, explain_warning, human_bytes  # noqa: E402
 from tokenmessung.runner import audit_subject_source, run_benchmark  # noqa: E402
 from tokenmessung.schemas import TASKS  # noqa: E402
 
@@ -40,11 +40,21 @@ def status(message: str) -> None:
 def ensure_api_key() -> str:
     if os.environ.get("CODEX_API_KEY"):
         return "env"
-    key = getpass.getpass("CODEX_API_KEY: ")
+    key = getpass.getpass("[tokenmessung] CODEX_API_KEY: ")
     if not key:
         raise SystemExit("CODEX_API_KEY is required.")
     os.environ["CODEX_API_KEY"] = key
     return "prompt"
+
+
+def tool_sanity_text() -> str:
+    return (
+        "Tool-Sanity: "
+        f"schema v{TOOL_SANITY['schema_version']}; "
+        f"isolation reporting={'on' if TOOL_SANITY['run_isolation_reporting'] else 'off'}; "
+        f"separated warnings={'on' if TOOL_SANITY['separated_warning_sections'] else 'off'}; "
+        f"aggregated command output={'on' if TOOL_SANITY['aggregated_command_output_counted'] else 'off'}."
+    )
 
 
 def render_progress(event: dict[str, object]) -> None:
@@ -99,6 +109,7 @@ def print_result(result: dict[str, object]) -> None:
     artifacts = result.get("artifacts", {})
     subject = result.get("subject", {})
     reliability = result.get("reliability", {})
+    tool_sanity = result.get("tool_sanity", {})
     percent = primary.get("percent") if isinstance(primary, dict) else None
     percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
     print("\n=== Tokenmessung Ergebnis ===")
@@ -118,6 +129,15 @@ def print_result(result: dict[str, object]) -> None:
         print(f"Reliability: {level} ({paired_runs} paired run(s))")
         for warning in reliability.get("warnings", []):
             print(f"- {warning}: {explain_warning(str(warning))}")
+    if isinstance(tool_sanity, dict):
+        print(
+            "Tool sanity: schema v{schema}; isolation reporting={isolation}; separated warnings={warnings}; aggregated output={output}".format(
+                schema=tool_sanity.get("schema_version", "n/a"),
+                isolation=tool_sanity.get("run_isolation_reporting", False),
+                warnings=tool_sanity.get("separated_warning_sections", False),
+                output=tool_sanity.get("aggregated_command_output_counted", False),
+            )
+        )
     if benchmark_warnings:
         print("Benchmark warnings:")
         for warning in benchmark_warnings:
@@ -172,19 +192,22 @@ def main(argv: list[str] | None = None) -> int:
     fixture_dir = raw_dir / "fixture"
     results_dir = raw_dir / "results"
     workspaces_dir = raw_dir / "workspaces"
+    task_ids = None if args.all_tasks else (args.task_ids or [TASKS[0]["id"]])
+    planned_task_count = len(TASKS) if task_ids is None else len(task_ids)
+    planned_runs = args.repeats * planned_task_count * 2
+    status(tool_sanity_text())
+    status(f"Geplante bezahlte Codex-Runs: {planned_runs} ({planned_task_count} Task(s) × {args.repeats} Repeat(s) × 2 Varianten).")
 
     key_source = ensure_api_key()
     status("API-Key aus Umgebung erkannt." if key_source == "env" else "API-Key lokal eingegeben.")
     status("Run-Isolation: eigenes CODEX_HOME pro Run; ~/.codex wird nicht als Instruction-Quelle gemessen.")
-    task_ids = None if args.all_tasks else (args.task_ids or [TASKS[0]["id"]])
     if task_ids is None:
         status("Task-Auswahl: alle Tasks.")
     else:
         status(f"Task-Auswahl: {', '.join(task_ids)}.")
     status(f"Fixture wird erstellt: {fixture_dir}")
     create_fixture(fixture_dir, force=True)
-    planned_task_count = len(TASKS) if task_ids is None else len(task_ids)
-    status(f"Fixture fertig. Geplante Runs: {args.repeats * planned_task_count * 2}")
+    status(f"Fixture fertig. Geplante Runs: {planned_runs}")
     started = time.monotonic()
     outputs = run_benchmark(
         fixture_dir,
