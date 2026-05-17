@@ -123,6 +123,7 @@ def print_result(result: dict[str, object]) -> None:
     benchmark_warnings = result.get("benchmark_warnings", result.get("warnings", []))
     artifacts = result.get("artifacts", {})
     subject = result.get("subject", {})
+    final_relevant = result.get("final_relevant_files", {})
     reliability = result.get("reliability", {})
     tool_sanity = result.get("tool_sanity", {})
     integrity = result.get("integrity", {})
@@ -149,6 +150,8 @@ def print_result(result: dict[str, object]) -> None:
         )
     if isinstance(quality, dict):
         print(f"Quality: agents {quality.get('agents_success_rate', 'n/a')} / control {quality.get('control_success_rate', 'n/a')}")
+    if isinstance(final_relevant, dict):
+        print(f"Repo-relative relevant_files only: {final_relevant.get('repo_relative_only', False)}")
     if isinstance(reliability, dict):
         paired_runs = reliability.get("paired_runs", "n/a")
         level = reliability.get("level", "n/a")
@@ -185,7 +188,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.all_tasks and args.task_ids:
         raise SystemExit("Use either --all-tasks or --task-id, not both.")
     root = Path.cwd().resolve()
-    subject_dir = (root / args.subject_dir).resolve()
+    subject_arg = args.subject_dir.expanduser()
+    subject_dir = (subject_arg if subject_arg.is_absolute() else root / subject_arg).resolve()
     if not (subject_dir / "AGENTS.md").is_file():
         raise SystemExit(f"Missing required file: {subject_dir / 'AGENTS.md'}")
     status(f"Subject checked: {subject_dir}")

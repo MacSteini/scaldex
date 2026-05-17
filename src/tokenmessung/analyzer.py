@@ -26,8 +26,11 @@ CRITICAL_WARNING_PREFIXES = (
     "unexpected_task_repeat_set",
     "missing_turn_completed_usage",
     "invalid_final_json",
+    "malformed_relevant_files",
     "nonzero_exit_code",
     "missing_expected_files",
+    "missing_expected_relevant_files",
+    "non_repo_relative_relevant_files",
 )
 INTEGRITY_WARNING_PREFIXES = (
     "missing_batch_id",
@@ -66,6 +69,7 @@ WARNING_DESCRIPTIONS = {
     "low_sample_size": "This is a smoke result based on fewer than 3 paired runs; use --repeats 3 or more for a decision-grade measurement.",
     "large_text_events_increased": "The instruction-package run produced more large text events over the configured threshold.",
     "missing_expected_files": "A run did not mention all expected files.",
+    "missing_expected_relevant_files": "A run did not include all expected files in final relevant_files.",
     "missing_batch_id": "Run metadata is missing the batch id, so this report cannot prove all rows came from one benchmark invocation.",
     "mixed_batch_ids": "The result folder contains runs from different benchmark invocations.",
     "missing_subject_fingerprint": "Run metadata is missing the subject fingerprint, so this report cannot prove a single subject state was measured.",
@@ -73,6 +77,8 @@ WARNING_DESCRIPTIONS = {
     "missing_run_config_fingerprint": "Run metadata is missing the run configuration fingerprint.",
     "mixed_run_config_fingerprints": "The result folder contains runs created with different benchmark configurations.",
     "missing_turn_completed_usage": "A run did not expose authoritative turn.completed usage; fallback usage parsing was used.",
+    "malformed_relevant_files": "A run produced final JSON without a valid relevant_files string array.",
+    "non_repo_relative_relevant_files": "A run emitted absolute, home-relative, URL, or parent-directory paths in final relevant_files; use repo-relative paths only.",
     "nonzero_exit_code": "A Codex run exited with a non-zero status.",
     "risky_full_reads_increased": "The instruction package caused more risky full-file reads than the control run.",
     "subject_contains_codex": "The tested subject includes a .codex/ directory, so this measures a full Codex instruction package, not only AGENTS.md.",
@@ -83,6 +89,8 @@ WARNING_DESCRIPTIONS = {
     "unexpected_task_repeat_set": "The observed task/repeat set does not match the run configuration recorded for this batch.",
     "wall_time_increased": "The instruction-package run took materially longer than the control run.",
 }
+
+WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def walk(obj: Any) -> Iterable[Any]:
@@ -167,6 +175,25 @@ def load_json_checked(path: Path, default: Any) -> tuple[Any, bool]:
         return default, False
 
 
+def final_relevant_files(final: Any) -> tuple[list[str], bool]:
+    if not isinstance(final, dict):
+        return [], False
+    value = final.get("relevant_files")
+    if not isinstance(value, list):
+        return [], True
+    files = [item for item in value if isinstance(item, str)]
+    return files, len(files) != len(value)
+
+
+def is_repo_relative_relevant_file(value: str) -> bool:
+    normalized = value.replace("\\", "/")
+    if not normalized or normalized.startswith("/") or normalized.startswith("~"):
+        return False
+    if "://" in normalized or WINDOWS_ABSOLUTE_PATH_RE.match(value):
+        return False
+    return ".." not in normalized.split("/")
+
+
 def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[str, Any]:
     meta = load_json(run_dir / "meta.json", {})
     subject_audit = meta.get("subject_audit", {})
@@ -222,6 +249,15 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
     final, final_valid = load_json_checked(run_dir / "final.json", {})
     if not final_valid:
         analysis_warnings.append("invalid_final_json")
+    relevant_files, malformed_relevant_files = final_relevant_files(final)
+    if final_valid and malformed_relevant_files:
+        analysis_warnings.append("malformed_relevant_files")
+    expected_relevant_files_found = [path for path in expected_files if path in relevant_files]
+    non_repo_relative_relevant_files = [path for path in relevant_files if not is_repo_relative_relevant_file(path)]
+    if expected_files and len(expected_relevant_files_found) != len(expected_files):
+        analysis_warnings.append("missing_expected_relevant_files")
+    if non_repo_relative_relevant_files:
+        analysis_warnings.append("non_repo_relative_relevant_files")
     final_text = json.dumps(final, ensure_ascii=False)
     all_text = "\n".join(all_text_fragments) + "\n" + final_text + "\n" + "\n".join(commands)
     expected_files_found = [path for path in expected_files if path in all_text]
@@ -236,7 +272,14 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
     time_meta = load_json(run_dir / "time.json", {})
     total_observed_tokens = usage["input_tokens"] + usage["output_tokens"] + usage["reasoning_output_tokens"]
     non_cached_input_tokens = max(usage["input_tokens"] - usage["cached_input_tokens"], 0)
-    success = final_valid and bool(expected_files) and len(final_expected_files_found) == len(expected_files) and bool(final_expected_terms_found)
+    success = (
+        final_valid
+        and bool(expected_files)
+        and len(final_expected_files_found) == len(expected_files)
+        and len(expected_relevant_files_found) == len(expected_files)
+        and not non_repo_relative_relevant_files
+        and bool(final_expected_terms_found)
+    )
     if expected_files and len(expected_files_found) != len(expected_files):
         analysis_warnings.append("missing_expected_files")
 
@@ -286,6 +329,13 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
         "expected_files_count": len(expected_files),
         "expected_files_found_count": len(expected_files_found),
         "expected_files_found": ";".join(expected_files_found),
+        "final_relevant_files_count": len(relevant_files),
+        "final_relevant_files": ";".join(relevant_files),
+        "expected_relevant_files_found_count": len(expected_relevant_files_found),
+        "expected_relevant_files_found": ";".join(expected_relevant_files_found),
+        "repo_relative_relevant_files_only": not non_repo_relative_relevant_files,
+        "non_repo_relative_relevant_files_count": len(non_repo_relative_relevant_files),
+        "non_repo_relative_relevant_files": ";".join(non_repo_relative_relevant_files),
         "expected_terms_found": ";".join(expected_terms_found),
         "first_expected_file_event_index": first_expected_event_index if first_expected_event_index is not None else "",
         "success": success,
@@ -333,6 +383,9 @@ def aggregate(rows: list[dict[str, Any]], deltas: list[dict[str, Any]], analysis
         "stderr_bytes",
         "large_text_events_over_20kb",
         "expected_files_found_count",
+        "final_relevant_files_count",
+        "expected_relevant_files_found_count",
+        "non_repo_relative_relevant_files_count",
         "first_expected_file_event_index",
         "subject_total_bytes",
         "agents_source_file_count",
@@ -544,6 +597,22 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
 
     subject_rows = [row for row in rows if row.get("variant") == "agents"]
     subject_warning_values = sorted({warning for row in subject_rows for warning in str(row.get("subject_warnings", "")).split(";") if warning})
+    non_repo_relative_relevant_files = sorted(
+        {
+            path
+            for row in rows
+            for path in str(row.get("non_repo_relative_relevant_files", "")).split(";")
+            if path
+        }
+    )
+    missing_expected_relevant_files = sorted(
+        {
+            path
+            for row in rows
+            for path in str(row.get("expected_files_found", "")).split(";")
+            if path and path not in str(row.get("expected_relevant_files_found", "")).split(";")
+        }
+    )
     reliability_warnings = ["low_sample_size"] if len(deltas) < 3 else []
     reliability_level = "low" if reliability_warnings else "normal"
     benchmark_warnings = warnings + secondary_warnings
@@ -590,6 +659,11 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
         "quality": {
             "agents_success_rate": agents_success,
             "control_success_rate": control_success,
+        },
+        "final_relevant_files": {
+            "repo_relative_only": not non_repo_relative_relevant_files,
+            "non_repo_relative_paths": non_repo_relative_relevant_files,
+            "missing_expected_paths": missing_expected_relevant_files,
         },
         "secondary": {
             "total_observed_tokens_delta": total_delta,
@@ -667,6 +741,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     primary = result["primary_delta"]
     quality = result["quality"]
     secondary = result["secondary"]
+    final_relevant = result.get("final_relevant_files", {})
     benchmark_warnings = result.get("benchmark_warnings", result["warnings"])
     subject = result.get("subject", {})
     reliability = result.get("reliability", {})
@@ -691,6 +766,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         f"| Unpaired variant median delta | {format_number(primary.get('variant_median_delta', 0))} |",
         f"| Agents success rate | {quality['agents_success_rate']:.2f} |",
         f"| Control success rate | {quality['control_success_rate']:.2f} |",
+        f"| Repo-relative `relevant_files` only | {final_relevant.get('repo_relative_only', False) if isinstance(final_relevant, dict) else False} |",
         f"| Total observed token delta | {format_number(secondary['total_observed_tokens_delta'])} |",
         f"| Wall time delta | {format_number(secondary['wall_seconds_delta'])}s |",
         f"| Command output delta | {human_bytes(secondary.get('stdout_bytes_delta', 0) + secondary.get('stderr_bytes_delta', 0))} ({format_number(secondary.get('stdout_bytes_delta', 0) + secondary.get('stderr_bytes_delta', 0))} bytes) |",
@@ -725,6 +801,15 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         lines.append(f"- Run isolation reporting: {tool_sanity.get('run_isolation_reporting', False)}")
         lines.append(f"- Separated warning sections: {tool_sanity.get('separated_warning_sections', False)}")
         lines.append(f"- Aggregated command output counted: {tool_sanity.get('aggregated_command_output_counted', False)}")
+    lines.extend(["", "## Final Relevant Files", ""])
+    if isinstance(final_relevant, dict):
+        lines.append(f"- Repo-relative only: {final_relevant.get('repo_relative_only', False)}")
+        non_relative_paths = final_relevant.get("non_repo_relative_paths", [])
+        if non_relative_paths:
+            lines.extend(f"- Non-repo-relative path: `{path}`" for path in non_relative_paths)
+        missing_expected_paths = final_relevant.get("missing_expected_paths", [])
+        if missing_expected_paths:
+            lines.extend(f"- Missing expected relevant file: `{path}`" for path in missing_expected_paths)
     lines.extend(["", "## Integrity", ""])
     if isinstance(integrity, dict):
         lines.append(f"- Status: {integrity.get('status', 'n/a')}")

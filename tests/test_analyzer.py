@@ -21,6 +21,7 @@ def write_run(
     subject_fingerprint: str = "subject-test",
     run_config_fingerprint: str = "config-test",
     expected_run_count: int = 2,
+    relevant_files: list[str] | None = None,
 ) -> None:
     run = base / run_id
     run.mkdir()
@@ -84,11 +85,12 @@ def write_run(
         events.insert(3, {"type": "turn.completed", "usage": {"input_tokens": tokens, "cached_input_tokens": 100, "output_tokens": 20, "reasoning_output_tokens": 5}})
     (run / "codex.jsonl").write_text("\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8")
     if valid_final:
+        final_relevant_files = relevant_files if relevant_files is not None else ["services/auth/src/login.ts"]
         (run / "final.json").write_text(
             json.dumps(
                 {
                     "answer": "see services/auth/src/login.ts",
-                    "relevant_files": ["services/auth/src/login.ts"],
+                    "relevant_files": final_relevant_files,
                     "root_cause_or_location": "passwordPolicy",
                     "confidence": "high",
                 }
@@ -114,6 +116,8 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual(row["risky_full_reads"], 1)
             self.assertGreaterEqual(row["stdout_bytes"], 43000)
             self.assertEqual(row["large_text_events_over_20kb"], 2)
+            self.assertEqual(row["expected_relevant_files_found_count"], 1)
+            self.assertTrue(row["repo_relative_relevant_files_only"])
             self.assertEqual(row["subject_total_bytes"], 40000)
             self.assertTrue(row["home_codex_excluded"])
             self.assertTrue(row["success"])
@@ -140,6 +144,7 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("low_sample_size", result["reliability"]["warnings"])
             self.assertEqual(result["tool_sanity"]["schema_version"], 1)
             self.assertTrue(result["tool_sanity"]["aggregated_command_output_counted"])
+            self.assertTrue(result["final_relevant_files"]["repo_relative_only"])
             self.assertEqual(result["integrity"]["status"], "ok")
             self.assertEqual(result["integrity"]["batch_id"], "batch-test")
             self.assertEqual(result["integrity"]["subject_fingerprint"], "subject-test")
@@ -150,6 +155,7 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("Paired median non-cached input delta", result_md)
             self.assertIn("Unpaired variant median delta", result_md)
             self.assertIn("## Tool Sanity", result_md)
+            self.assertIn("## Final Relevant Files", result_md)
             self.assertIn("## Integrity", result_md)
             self.assertIn("Aggregated command output counted: True", result_md)
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
@@ -165,6 +171,32 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("missing_turn_completed_usage", warnings)
             self.assertIn("invalid_final_json", warnings)
             self.assertIn("nonzero_exit_code", warnings)
+
+    def test_analyzer_flags_non_repo_relative_relevant_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            write_run(base, "control", "control", 1000)
+            write_run(base, "agents", "agents", 700, relevant_files=["/tmp/repo/services/auth/src/login.ts"])
+            paths = analyze_results(base)
+            result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
+            self.assertEqual(result["verdict"], "not_effective")
+            self.assertFalse(result["final_relevant_files"]["repo_relative_only"])
+            self.assertIn("/tmp/repo/services/auth/src/login.ts", result["final_relevant_files"]["non_repo_relative_paths"])
+            self.assertIn("non_repo_relative_relevant_files", result["benchmark_warnings"])
+            agents_row = parse_run(base / "agents")
+            self.assertFalse(agents_row["repo_relative_relevant_files_only"])
+            self.assertIn("non_repo_relative_relevant_files", agents_row["analysis_warnings"])
+
+    def test_analyzer_flags_missing_expected_relevant_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            write_run(base, "control", "control", 1000)
+            write_run(base, "agents", "agents", 700, relevant_files=["services/auth/src/other.ts"])
+            paths = analyze_results(base)
+            result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
+            self.assertEqual(result["verdict"], "not_effective")
+            self.assertIn("missing_expected_relevant_files", result["benchmark_warnings"])
+            self.assertIn("services/auth/src/login.ts", result["final_relevant_files"]["missing_expected_paths"])
 
     def test_summary_contains_success_rates_and_pair_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
