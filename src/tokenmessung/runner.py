@@ -18,6 +18,13 @@ ProgressCallback = Callable[[dict[str, Any]], None]
 PROCESS_TIMEOUT_EXIT_CODE = 124
 IGNORED_SUBJECT_FILE_NAMES = {".DS_Store"}
 IGNORED_SUBJECT_DIR_NAMES = {".git", "__pycache__"}
+RUN_ISOLATION = {
+    "ephemeral": True,
+    "ignore_user_config": True,
+    "ignore_rules": True,
+    "isolated_codex_home": True,
+    "home_codex_excluded": True,
+}
 
 
 def command_output(args: list[str], cwd: Path | None = None) -> str:
@@ -362,6 +369,7 @@ def run_one(
         "workspace_parent": str(workspace_parent),
         "workspace_root": str(workspace_root) if workspace_root is not None else "",
         "codex_home": str(codex_home),
+        "run_isolation": RUN_ISOLATION,
         "codex_version": codex_version(),
         "python_version": sys.version.split()[0],
         "codex_command": command,
@@ -552,6 +560,7 @@ def write_synthetic_run(run_dir: Path, task: dict[str, Any], variant: str, repea
         "codex_version": "synthetic",
         "python_version": sys.version.split()[0],
         "codex_command": [],
+        "run_isolation": RUN_ISOLATION,
         "keep_workdirs": False,
         "workdir_cleanup": "synthetic",
     }

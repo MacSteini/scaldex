@@ -139,6 +139,7 @@ def load_json_checked(path: Path, default: Any) -> tuple[Any, bool]:
 def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[str, Any]:
     meta = load_json(run_dir / "meta.json", {})
     subject_audit = meta.get("subject_audit", {})
+    run_isolation = meta.get("run_isolation", {})
     task = meta.get("task", {})
     expected_files = task.get("expected_files", [])
     expected_terms = task.get("expected_terms", [])
@@ -224,6 +225,10 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
         "subject_warning_count": len(subject_audit.get("warnings", [])) if isinstance(subject_audit, dict) and isinstance(subject_audit.get("warnings"), list) else 0,
         "subject_warnings": ";".join(subject_audit.get("warnings", [])) if isinstance(subject_audit, dict) and isinstance(subject_audit.get("warnings"), list) else "",
         "subject_largest_files": json.dumps(subject_audit.get("largest_files", [])[:5], ensure_ascii=False) if isinstance(subject_audit, dict) else "[]",
+        "isolated_codex_home": run_isolation.get("isolated_codex_home", "") if isinstance(run_isolation, dict) else "",
+        "ignore_user_config": run_isolation.get("ignore_user_config", "") if isinstance(run_isolation, dict) else "",
+        "ignore_rules": run_isolation.get("ignore_rules", "") if isinstance(run_isolation, dict) else "",
+        "home_codex_excluded": run_isolation.get("home_codex_excluded", "") if isinstance(run_isolation, dict) else "",
         "exit_code": exit_code,
         "wall_seconds": time_meta.get("wall_seconds", ""),
         "input_tokens": usage["input_tokens"],
@@ -500,6 +505,12 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "task_ids": task_ids,
             "repeats": repeats,
         },
+        "isolation": {
+            "isolated_codex_home": bool(first_subject_row.get("isolated_codex_home")),
+            "ignore_user_config": bool(first_subject_row.get("ignore_user_config")),
+            "ignore_rules": bool(first_subject_row.get("ignore_rules")),
+            "home_codex_excluded": bool(first_subject_row.get("home_codex_excluded")),
+        },
         "subject": {
             "mode": first_subject_row.get("subject_mode", ""),
             "source_file_count": first_subject_row.get("agents_source_file_count", 0),
@@ -532,6 +543,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     benchmark_warnings = result.get("benchmark_warnings", result["warnings"])
     subject = result.get("subject", {})
     reliability = result.get("reliability", {})
+    isolation = result.get("isolation", {})
     artifacts = result.get("artifacts", {})
     raw_results_dir = artifacts.get("raw_results_dir", "raw/") if isinstance(artifacts, dict) else "raw/"
     lines = [
@@ -557,6 +569,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         f"| Subject size | {human_bytes(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} ({format_number(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} bytes) |",
         f"| Paired runs | {format_number(reliability.get('paired_runs', 0) if isinstance(reliability, dict) else 0)} |",
         f"| Reliability | {reliability.get('level', 'n/a') if isinstance(reliability, dict) else 'n/a'} |",
+        f"| Home `~/.codex/` excluded | {isolation.get('home_codex_excluded', False) if isinstance(isolation, dict) else False} |",
         "",
         "## Interpretation",
         "",
@@ -584,6 +597,12 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         if largest_files:
             lines.extend(["", "Largest subject files:", ""])
             lines.extend(f"- `{item.get('path')}`: {human_bytes(item.get('bytes', 0))} ({format_number(item.get('bytes', 0))} bytes)" for item in largest_files[:5] if isinstance(item, dict))
+    lines.extend(["", "## Isolation", ""])
+    if isinstance(isolation, dict):
+        lines.append(f"- Isolated per-run `CODEX_HOME`: {isolation.get('isolated_codex_home', False)}")
+        lines.append(f"- User config ignored: {isolation.get('ignore_user_config', False)}")
+        lines.append(f"- External rules ignored: {isolation.get('ignore_rules', False)}")
+        lines.append(f"- Home `~/.codex/` excluded from the measured instruction source: {isolation.get('home_codex_excluded', False)}")
     lines.extend(["", "## Benchmark Warnings", ""])
     if benchmark_warnings:
         lines.extend(f"- `{warning}`: {explain_warning(str(warning))}" for warning in benchmark_warnings)

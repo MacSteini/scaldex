@@ -103,6 +103,9 @@ def print_result(result: dict[str, object]) -> None:
     percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
     print("\n=== Tokenmessung Ergebnis ===")
     print(f"Verdict: {result.get('verdict', 'unknown')}")
+    isolation = result.get("isolation", {})
+    if isinstance(isolation, dict):
+        print(f"Isolation: ~/.codex excluded = {isolation.get('home_codex_excluded', False)}")
     if isinstance(subject, dict):
         print(f"Subject: {subject.get('mode', 'n/a')} / {format_delta(subject.get('source_file_count'))} files / {human_bytes(subject.get('total_bytes'))} ({format_delta(subject.get('total_bytes'))} bytes)")
     if isinstance(primary, dict):
@@ -172,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
 
     key_source = ensure_api_key()
     status("API-Key aus Umgebung erkannt." if key_source == "env" else "API-Key lokal eingegeben.")
+    status("Run-Isolation: eigenes CODEX_HOME pro Run; ~/.codex wird nicht als Instruction-Quelle gemessen.")
     task_ids = None if args.all_tasks else (args.task_ids or [TASKS[0]["id"]])
     if task_ids is None:
         status("Task-Auswahl: alle Tasks.")

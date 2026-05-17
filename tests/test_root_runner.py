@@ -50,6 +50,7 @@ def write_fake_outputs(root: Path) -> dict[str, Path]:
                 "primary_delta": {"agents_minus_control": -10, "percent": -10.0},
                 "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
                 "subject": {"mode": "package", "source_file_count": 1, "total_bytes": 9, "total_size": "9 B", "warnings": []},
+                "isolation": {"home_codex_excluded": True},
                 "warnings": ["large_subject"],
                 "benchmark_warnings": ["command_count_increased"],
                 "reliability": {"level": "low", "paired_runs": 1, "warnings": ["low_sample_size"]},
@@ -113,7 +114,9 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Subject-Audit", error.getvalue())
             self.assertNotIn("sk-test-secret", error.getvalue())
             self.assertIn("Verdict: effective", output.getvalue())
+            self.assertIn("Isolation: ~/.codex excluded = True", output.getvalue())
             self.assertIn("Subject: package", output.getvalue())
+            self.assertIn("Run-Isolation: eigenes CODEX_HOME pro Run", error.getvalue())
             self.assertIn("Reliability: low (1 paired run(s))", output.getvalue())
             self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())
             self.assertNotIn("large_subject: The tested subject package is larger than 32 KiB", output.getvalue())

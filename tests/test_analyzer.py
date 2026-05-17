@@ -37,6 +37,13 @@ def write_run(base: Path, run_id: str, variant: str, tokens: int, *, include_usa
             "largest_files": [{"path": ".codex/instructions.md", "bytes": 30000}],
             "warnings": ["large_subject"] if variant == "agents" else [],
         },
+        "run_isolation": {
+            "ephemeral": True,
+            "ignore_user_config": True,
+            "ignore_rules": True,
+            "isolated_codex_home": True,
+            "home_codex_excluded": True,
+        },
     }
     (run / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     events = [
@@ -79,6 +86,7 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual(row["risky_full_reads"], 1)
             self.assertEqual(row["large_text_events_over_20kb"], 1)
             self.assertEqual(row["subject_total_bytes"], 40000)
+            self.assertTrue(row["home_codex_excluded"])
             self.assertTrue(row["success"])
 
     def test_analyze_results_writes_summary_and_paired_deltas(self) -> None:
@@ -94,6 +102,7 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual(result["subject"]["mode"], "package")
             self.assertEqual(result["subject"]["total_size"], "39.1 KiB")
             self.assertEqual(result["subject"]["largest_files"][0]["size"], "29.3 KiB")
+            self.assertTrue(result["isolation"]["home_codex_excluded"])
             self.assertIn("large_subject", result["warnings"])
             self.assertNotIn("large_subject", result["benchmark_warnings"])
             self.assertEqual(result["reliability"]["level"], "low")
