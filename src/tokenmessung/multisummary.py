@@ -112,8 +112,20 @@ def build_multi_summary(paths: list[Path]) -> dict[str, Any]:
         and len(measured_decision_tasks) >= expected_task_count
         and not warnings
     )
+    global_blockers: list[str] = []
+    if len(effective_tasks) < GLOBAL_TASK_THRESHOLD:
+        global_blockers.append(
+            f"effective_decision_grade_tasks_below_threshold:{len(effective_tasks)}/{GLOBAL_TASK_THRESHOLD}"
+        )
+    if len(measured_decision_tasks) < expected_task_count:
+        global_blockers.append(
+            f"decision_grade_tasks_incomplete:{len(measured_decision_tasks)}/{expected_task_count}"
+        )
+    global_blockers.extend(warnings)
     return {
         "global_token_efficiency_claim_allowed": global_allowed,
+        "global_decision": "claim_global_token_efficiency" if global_allowed else "do_not_claim_global_efficiency",
+        "global_blockers": global_blockers,
         "effective_decision_grade_task_count": len(effective_tasks),
         "decision_grade_task_count": len(measured_decision_tasks),
         "expected_task_count": expected_task_count,
@@ -137,6 +149,8 @@ def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
     lines = [
         "# Tokenmessung Multi-Task Summary",
         "",
+        f"Global decision: **{summary['global_decision']}**",
+        "",
         f"Global token efficiency claim allowed: **{summary['global_token_efficiency_claim_allowed']}**",
         "",
         "| Metric | Value |",
@@ -151,6 +165,18 @@ def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
     warnings = summary.get("warnings", [])
     if warnings:
         lines.extend(f"- `{warning}`" for warning in warnings)
+    else:
+        lines.append("- None")
+    blockers = summary.get("global_blockers", [])
+    lines.extend(
+        [
+            "",
+            "## Global Blockers",
+            "",
+        ]
+    )
+    if blockers:
+        lines.extend(f"- `{blocker}`" for blocker in blockers)
     else:
         lines.append("- None")
     lines.extend(
@@ -190,4 +216,3 @@ def summarize_results(inputs: list[Path], out: Path) -> dict[str, Path]:
     json_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_multi_summary_markdown(md_path, summary)
     return {"summary_json": json_path, "summary_md": md_path}
-

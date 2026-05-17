@@ -76,6 +76,8 @@ class MultiSummaryTests(unittest.TestCase):
                 paths.append(result_path)
             summary = build_multi_summary(paths)
             self.assertTrue(summary["global_token_efficiency_claim_allowed"])
+            self.assertEqual(summary["global_decision"], "claim_global_token_efficiency")
+            self.assertEqual(summary["global_blockers"], [])
             self.assertEqual(summary["effective_decision_grade_task_count"], 3)
             self.assertEqual(summary["decision_grade_task_count"], 4)
 
@@ -88,6 +90,9 @@ class MultiSummaryTests(unittest.TestCase):
             write_result(decision, "login_test_failure", paired_runs=3, subject_fingerprint="subject-b")
             summary = build_multi_summary([smoke, decision])
             self.assertFalse(summary["global_token_efficiency_claim_allowed"])
+            self.assertEqual(summary["global_decision"], "do_not_claim_global_efficiency")
+            self.assertIn("effective_decision_grade_tasks_below_threshold:1/3", summary["global_blockers"])
+            self.assertIn("mixed_or_missing_subject_fingerprints", summary["global_blockers"])
             self.assertIn("mixed_or_missing_subject_fingerprints", summary["warnings"])
             self.assertIn("mixed_smoke_and_decision_grade_results", summary["warnings"])
             self.assertEqual(summary["mixed_grade_tasks"], ["login_test_failure"])
@@ -105,9 +110,11 @@ class MultiSummaryTests(unittest.TestCase):
             self.assertEqual(payload["tasks"][0]["task_id"], "login_test_failure")
             report = outputs["summary_md"].read_text(encoding="utf-8")
             self.assertIn("# Tokenmessung Multi-Task Summary", report)
+            self.assertIn("Global decision: **do_not_claim_global_efficiency**", report)
+            self.assertIn("## Global Blockers", report)
+            self.assertIn("decision_grade_tasks_incomplete:1/4", report)
             self.assertIn("login_test_failure", report)
 
 
 if __name__ == "__main__":
     unittest.main()
-
