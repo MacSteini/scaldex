@@ -145,6 +145,8 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual(result["reliability"]["level"], "low")
             self.assertIn("low_sample_size", result["reliability"]["warnings"])
             self.assertEqual(result["decision"]["next_action"], "eligible_for_decision_run")
+            self.assertEqual(result["decision"]["decision"], "smoke_passed")
+            self.assertEqual(result["decision"]["global_claim_eligibility"], "single-task only / not enough evidence")
             self.assertTrue(result["decision"]["quality_gate_passed"])
             self.assertFalse(result["decision"]["uses_unpaired_variant_medians_for_decision"])
             self.assertEqual(result["tool_sanity"]["schema_version"], 1)
@@ -157,6 +159,11 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("warning_details", result)
             result_md = paths["result_md"].read_text(encoding="utf-8")
             self.assertTrue(result_md.startswith("# Tokenmessung Result"))
+            self.assertIn("## Decision Summary", result_md)
+            self.assertIn("| Next action | eligible_for_decision_run |", result_md)
+            self.assertIn("| Quality gate | passed |", result_md)
+            self.assertIn("| Global claim eligibility | single-task only / not enough evidence |", result_md)
+            self.assertIn("Variant medians are secondary context", result_md)
             self.assertIn("Paired median non-cached input delta", result_md)
             self.assertIn("Unpaired variant median delta", result_md)
             self.assertIn("## Tool Sanity", result_md)
@@ -348,6 +355,7 @@ class AnalyzerTests(unittest.TestCase):
         self.assertEqual(result["reliability"]["level"], "normal")
         self.assertEqual(result["reliability"]["warnings"], [])
         self.assertEqual(result["decision"]["next_action"], "record_decision_grade_win")
+        self.assertEqual(result["decision"]["decision"], "decision_grade_effective")
 
     def test_build_result_reports_not_effective_when_primary_metric_regresses(self) -> None:
         summary = {
@@ -373,6 +381,7 @@ class AnalyzerTests(unittest.TestCase):
             "reliability": {"paired_runs": 3},
         }
         self.assertEqual(decision_summary(result)["next_action"], "do_not_claim_efficiency")
+        self.assertEqual(decision_summary(result)["decision"], "decision_grade_not_effective")
 
     def test_decision_summary_reports_stop_for_smoke_quality_failure(self) -> None:
         result = {

@@ -604,10 +604,17 @@ def decision_summary(result: dict[str, Any]) -> dict[str, Any]:
     else:
         next_action = "eligible_for_decision_run" if quality_ok else "stop_fix_quality_or_task_behavior"
     return {
+        "decision": {
+            "eligible_for_decision_run": "smoke_passed",
+            "stop_fix_quality_or_task_behavior": "smoke_blocked",
+            "record_decision_grade_win": "decision_grade_effective",
+            "do_not_claim_efficiency": "decision_grade_not_effective",
+        }[next_action],
         "next_action": next_action,
         "quality_gate_passed": quality_ok,
         "decision_grade": is_decision_grade,
         "primary_metric_basis": "paired_median_non_cached_input_delta",
+        "global_claim_eligibility": "single-task only / not enough evidence",
         "uses_unpaired_variant_medians_for_decision": False,
     }
 
@@ -802,11 +809,20 @@ def format_percent(value: float | None) -> str:
     return f"{value:+.1f}%"
 
 
+def format_warning_list(warnings: Any) -> str:
+    if not warnings:
+        return "none"
+    if isinstance(warnings, list):
+        return ", ".join(str(warning) for warning in warnings) if warnings else "none"
+    return str(warnings)
+
+
 def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     primary = result["primary_delta"]
     quality = result["quality"]
     secondary = result["secondary"]
     final_relevant = result.get("final_relevant_files", {})
+    decision = result.get("decision", {})
     benchmark_warnings = result.get("benchmark_warnings", result["warnings"])
     subject = result.get("subject", {})
     reliability = result.get("reliability", {})
@@ -819,6 +835,19 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         "# Tokenmessung Result",
         "",
         f"Verdict: **{result['verdict']}**",
+        "",
+        "## Decision Summary",
+        "",
+        "| Field | Value |",
+        "| --- | --- |",
+        f"| Decision | {decision.get('decision', 'n/a') if isinstance(decision, dict) else 'n/a'} |",
+        f"| Next action | {decision.get('next_action', 'n/a') if isinstance(decision, dict) else 'n/a'} |",
+        f"| Primary metric | {decision.get('primary_metric_basis', 'paired_median_non_cached_input_delta') if isinstance(decision, dict) else 'paired_median_non_cached_input_delta'} |",
+        f"| Quality gate | {'passed' if isinstance(decision, dict) and decision.get('quality_gate_passed') else 'failed'} |",
+        f"| Warnings | {format_warning_list(benchmark_warnings)} |",
+        f"| Global claim eligibility | {decision.get('global_claim_eligibility', 'single-task only / not enough evidence') if isinstance(decision, dict) else 'single-task only / not enough evidence'} |",
+        "",
+        "Variant medians are secondary context; the decision uses paired median non-cached input delta plus quality gates.",
         "",
         "## Scorecard",
         "",
