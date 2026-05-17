@@ -49,6 +49,7 @@ def write_fake_outputs(root: Path) -> dict[str, Path]:
                 "verdict": "effective",
                 "primary_delta": {"agents_minus_control": -10, "percent": -10.0},
                 "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+                "subject": {"mode": "package", "source_file_count": 1, "total_bytes": 9, "warnings": []},
                 "warnings": [],
                 "artifacts": {
                     "result_json": str(result_json),
@@ -93,8 +94,11 @@ class RootRunnerTests(unittest.TestCase):
                 self.assertEqual(kwargs["task_ids"], ["login_test_failure"])
                 self.assertEqual(kwargs["max_run_seconds"], 300.0)
                 self.assertEqual(kwargs["analysis_dir"], (root / "tokenmessung-run").resolve())
+                self.assertEqual(kwargs["subject_mode"], "package")
                 self.assertEqual(args[0], (root / "tokenmessung-run" / "raw" / "fixture").resolve())
+                self.assertIsNone(args[1])
                 self.assertEqual(args[4], (root / "tokenmessung-run" / "raw" / "results").resolve())
+                self.assertEqual(kwargs["agents_dir"], (root / "subject").resolve())
                 self.assertEqual(kwargs["workspace_root"], (root / "tokenmessung-run" / "raw" / "workspaces").resolve())
                 return write_fake_outputs(root)
 
@@ -104,8 +108,10 @@ class RootRunnerTests(unittest.TestCase):
                 code = module.main(["--model", "model"])
             self.assertEqual(code, 0)
             self.assertIn("Run 1/2 startet", error.getvalue())
+            self.assertIn("Subject-Audit", error.getvalue())
             self.assertNotIn("sk-test-secret", error.getvalue())
             self.assertIn("Verdict: effective", output.getvalue())
+            self.assertIn("Subject: package", output.getvalue())
             for path in (root / "tokenmessung-run").rglob("*"):
                 if path.is_file():
                     text = path.read_text(encoding="utf-8")
@@ -127,6 +133,25 @@ class RootRunnerTests(unittest.TestCase):
 
             with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch.object(module, "create_fixture"), patch.object(module, "run_benchmark", side_effect=fake_run_benchmark):
                 self.assertEqual(module.main(["--model", "model", "--all-tasks"]), 0)
+
+    def test_agents_md_subject_mode_passes_only_agents_file(self) -> None:
+        module = load_root_runner()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subject = root / "subject"
+            (subject / ".codex").mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            (subject / ".codex" / "instructions.md").write_text("# Support\n", encoding="utf-8")
+
+            def fake_run_benchmark(*args: object, **kwargs: object) -> dict[str, Path]:
+                self.assertEqual(kwargs["subject_mode"], "agents-md")
+                self.assertEqual(args[1], (root / "subject" / "AGENTS.md").resolve())
+                self.assertIsNone(kwargs["agents_dir"])
+                return write_fake_outputs(root)
+
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch.object(module, "create_fixture"), patch.object(module, "run_benchmark", side_effect=fake_run_benchmark):
+                self.assertEqual(module.main(["--model", "model", "--subject-mode", "agents-md"]), 0)
 
 
 if __name__ == "__main__":

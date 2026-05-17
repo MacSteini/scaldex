@@ -13,7 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
 from tokenmessung.fixture import create_fixture  # noqa: E402
-from tokenmessung.runner import run_benchmark  # noqa: E402
+from tokenmessung.runner import audit_subject_source, run_benchmark  # noqa: E402
 from tokenmessung.schemas import TASKS  # noqa: E402
 
 
@@ -28,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--all-tasks", action="store_true")
     parser.add_argument("--heartbeat-seconds", type=float, default=10.0)
     parser.add_argument("--max-run-seconds", type=float, default=300.0)
+    parser.add_argument("--subject-mode", choices=("package", "agents-md"), default="package")
     return parser
 
 
@@ -95,10 +96,13 @@ def print_result(result: dict[str, object]) -> None:
     quality = result.get("quality", {})
     warnings = result.get("warnings", [])
     artifacts = result.get("artifacts", {})
+    subject = result.get("subject", {})
     percent = primary.get("percent") if isinstance(primary, dict) else None
     percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
     print("\n=== Tokenmessung Ergebnis ===")
     print(f"Verdict: {result.get('verdict', 'unknown')}")
+    if isinstance(subject, dict):
+        print(f"Subject: {subject.get('mode', 'n/a')} / {format_delta(subject.get('source_file_count'))} files / {format_delta(subject.get('total_bytes'))} bytes")
     if isinstance(primary, dict):
         print(f"Non-cached input delta: {format_delta(primary.get('agents_minus_control'))} ({percent_text})")
     if isinstance(quality, dict):
@@ -122,6 +126,27 @@ def main(argv: list[str] | None = None) -> int:
     if not (subject_dir / "AGENTS.md").is_file():
         raise SystemExit(f"Missing required file: {subject_dir / 'AGENTS.md'}")
     status(f"Subject geprüft: {subject_dir}")
+    agents_file = None
+    agents_dir = None
+    if args.subject_mode == "package":
+        agents_dir = subject_dir
+    else:
+        agents_file = subject_dir / "AGENTS.md"
+    subject_audit = audit_subject_source(agents_file, agents_dir, subject_mode=args.subject_mode)
+    status(
+        "Subject-Audit: {mode}, {files} Datei(en), {bytes} Bytes.".format(
+            mode=subject_audit["mode"],
+            files=subject_audit["file_count"],
+            bytes=subject_audit["total_bytes"],
+        )
+    )
+    largest_files = subject_audit.get("largest_files", [])
+    if largest_files:
+        top = ", ".join(f"{item['path']} ({item['bytes']} B)" for item in largest_files[:3])
+        status(f"Größte Subject-Dateien: {top}.")
+    warnings = subject_audit.get("warnings", [])
+    if warnings:
+        status("Subject-Warnungen: " + ", ".join(str(warning) for warning in warnings) + ".")
 
     run_dir = (root / args.run_dir).resolve()
     raw_dir = run_dir / "raw"
@@ -143,18 +168,19 @@ def main(argv: list[str] | None = None) -> int:
     started = time.monotonic()
     outputs = run_benchmark(
         fixture_dir,
-        None,
+        agents_file,
         args.model,
         args.repeats,
         results_dir,
         seed=args.seed,
-        agents_dir=subject_dir,
+        agents_dir=agents_dir,
         workspace_root=workspaces_dir,
         progress=render_progress,
         heartbeat_interval=args.heartbeat_seconds,
         max_run_seconds=args.max_run_seconds,
         task_ids=task_ids,
         analysis_dir=run_dir,
+        subject_mode=args.subject_mode,
     )
     result = json.loads(outputs["result_json"].read_text(encoding="utf-8"))
     result["run_config"] = {
@@ -164,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         "model": args.model,
         "repeats": args.repeats,
         "seed": args.seed,
+        "subject_mode": args.subject_mode,
         "subject_dir": str(subject_dir),
         "task_ids": task_ids,
     }

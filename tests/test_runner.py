@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tokenmessung.fixture import create_fixture
-from tokenmessung.runner import copy_fixture, install_agents_dir, install_agents_file, remove_control_instructions, run_one, selected_tasks, synthesize_benchmark, validate_benchmark_inputs
+from tokenmessung.runner import audit_subject_source, copy_fixture, init_git_snapshot, install_agents_dir, install_agents_file, remove_control_instructions, run_one, selected_tasks, synthesize_benchmark, validate_benchmark_inputs
 
 
 class FakeProcess:
@@ -79,6 +79,38 @@ class RunnerVariantTests(unittest.TestCase):
             self.assertEqual((workdir / "AGENTS.md").read_text(encoding="utf-8"), "# Agents\n")
             self.assertEqual((workdir / "AGENTS.override.md").read_text(encoding="utf-8"), "# Override\n")
             self.assertTrue((workdir / ".codex" / "instructions.md").exists())
+
+    def test_subject_audit_reports_package_size_and_codex_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            subject = Path(tmp) / "subject"
+            (subject / ".codex" / "skills" / "demo").mkdir(parents=True)
+            (subject / ".codex" / "config" / "tooling").mkdir(parents=True)
+            (subject / ".codex" / "bin").mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            (subject / ".codex" / "skills" / "demo" / "SKILL.md").write_text("x" * 33_000, encoding="utf-8")
+            (subject / ".codex" / "config" / "tooling" / "config.txt").write_text("tooling\n", encoding="utf-8")
+            (subject / ".codex" / "bin" / "validate").write_text("validate\n", encoding="utf-8")
+            audit = audit_subject_source(None, subject, subject_mode="package")
+            self.assertEqual(audit["mode"], "package")
+            self.assertGreater(audit["total_bytes"], 32_000)
+            self.assertIn("large_subject", audit["warnings"])
+            self.assertIn("subject_contains_codex", audit["warnings"])
+            self.assertIn("subject_contains_codex_skills", audit["warnings"])
+            self.assertIn("subject_contains_codex_tooling", audit["warnings"])
+            self.assertIn("subject_contains_codex_bin", audit["warnings"])
+
+    def test_control_snapshot_is_clean_after_instruction_removal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = create_fixture(base / "fixture")
+            (fixture / ".codex").mkdir()
+            (fixture / ".codex" / "instructions.md").write_text("# Support\n", encoding="utf-8")
+            workdir = base / "work"
+            copy_fixture(fixture, workdir)
+            remove_control_instructions(workdir)
+            init_git_snapshot(workdir)
+            status = subprocess.run(["git", "status", "--short"], cwd=workdir, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(status.stdout.strip(), "")
 
     def test_validate_rejects_invalid_repeats_before_paid_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

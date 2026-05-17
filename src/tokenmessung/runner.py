@@ -16,6 +16,8 @@ from .schemas import OUTPUT_SCHEMA, TASKS
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 PROCESS_TIMEOUT_EXIT_CODE = 124
+IGNORED_SUBJECT_FILE_NAMES = {".DS_Store"}
+IGNORED_SUBJECT_DIR_NAMES = {".git", "__pycache__"}
 
 
 def command_output(args: list[str], cwd: Path | None = None) -> str:
@@ -89,6 +91,9 @@ def copy_fixture(fixture: Path, workdir: Path) -> None:
         shutil.rmtree(workdir)
     ignore = shutil.ignore_patterns(".git")
     shutil.copytree(fixture, workdir, ignore=ignore)
+
+
+def init_git_snapshot(workdir: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=workdir, check=True)
     subprocess.run(["git", "add", "."], cwd=workdir, check=True)
     subprocess.run(
@@ -126,16 +131,62 @@ def install_agents_dir(workdir: Path, agents_dir: Path) -> None:
             shutil.copy2(source, target)
 
 
-def agents_source_size(agents_file: Path | None, agents_dir: Path | None) -> int:
+def should_ignore_subject_path(path: Path) -> bool:
+    if path.name in IGNORED_SUBJECT_FILE_NAMES:
+        return True
+    return any(part in IGNORED_SUBJECT_DIR_NAMES for part in path.parts)
+
+
+def audit_subject_source(agents_file: Path | None, agents_dir: Path | None, subject_mode: str = "manual") -> dict[str, Any]:
     if agents_file is not None:
-        return agents_file.stat().st_size
+        size = agents_file.stat().st_size
+        warnings = ["large_subject"] if size > 32_000 else []
+        return {
+            "mode": subject_mode,
+            "source_type": "file",
+            "path": str(agents_file),
+            "file_count": 1,
+            "total_bytes": size,
+            "largest_files": [{"path": agents_file.name, "bytes": size}],
+            "warnings": warnings,
+        }
     assert agents_dir is not None
     total = 0
+    files: list[dict[str, Any]] = []
     for path in agents_dir.rglob("*"):
-        if ".git" in path.parts or not path.is_file():
+        relative = path.relative_to(agents_dir)
+        if should_ignore_subject_path(relative) or not path.is_file():
             continue
-        total += path.stat().st_size
-    return total
+        size = path.stat().st_size
+        total += size
+        files.append({"path": relative.as_posix(), "bytes": size})
+    files.sort(key=lambda item: int(item["bytes"]), reverse=True)
+    file_paths = {str(item["path"]) for item in files}
+    top_level_dirs = {Path(path).parts[0] for path in file_paths if Path(path).parts}
+    warnings: list[str] = []
+    if total > 32_000:
+        warnings.append("large_subject")
+    if ".codex" in top_level_dirs:
+        warnings.append("subject_contains_codex")
+    if any(path.startswith(".codex/skills/") for path in file_paths):
+        warnings.append("subject_contains_codex_skills")
+    if any(path.startswith(".codex/config/tooling/") for path in file_paths):
+        warnings.append("subject_contains_codex_tooling")
+    if any(path.startswith(".codex/bin/") for path in file_paths):
+        warnings.append("subject_contains_codex_bin")
+    return {
+        "mode": subject_mode,
+        "source_type": "dir",
+        "path": str(agents_dir),
+        "file_count": len(files),
+        "total_bytes": total,
+        "largest_files": files[:10],
+        "warnings": warnings,
+    }
+
+
+def agents_source_size(agents_file: Path | None, agents_dir: Path | None) -> int:
+    return int(audit_subject_source(agents_file, agents_dir).get("total_bytes", 0))
 
 
 def write_output_schema(run_dir: Path) -> Path:
@@ -224,6 +275,8 @@ def run_one(
     heartbeat_interval: float = 10.0,
     total_runs: int | None = None,
     max_run_seconds: float | None = None,
+    subject_mode: str = "manual",
+    subject_audit: dict[str, Any] | None = None,
 ) -> None:
     run_id = f"{task['id']}__{variant}__r{repeat}"
     run_dir = out / run_id
@@ -250,6 +303,7 @@ def run_one(
             raise ValueError("agents variant requires agents_file or agents_dir")
     else:
         raise ValueError(f"Unknown variant: {variant}")
+    init_git_snapshot(workdir)
 
     schema_path = write_output_schema(run_dir)
     final_path = run_dir / "final.json"
@@ -286,6 +340,7 @@ def run_one(
         task["prompt"],
     ]
 
+    effective_subject_audit = subject_audit or audit_subject_source(agents_file, agents_dir, subject_mode=subject_mode)
     meta = {
         "run_id": run_id,
         "task_id": task["id"],
@@ -299,7 +354,10 @@ def run_one(
         "agents_source_type": "dir" if agents_dir is not None else "file",
         "agents_file": str(agents_file) if agents_file is not None else "",
         "agents_dir": str(agents_dir) if agents_dir is not None else "",
-        "agents_file_bytes": agents_source_size(agents_file, agents_dir),
+        "subject_mode": subject_mode,
+        "agents_file_bytes": effective_subject_audit.get("total_bytes", 0),
+        "agents_source_file_count": effective_subject_audit.get("file_count", 0),
+        "subject_audit": effective_subject_audit,
         "workdir": str(workdir),
         "workspace_parent": str(workspace_parent),
         "workspace_root": str(workspace_root) if workspace_root is not None else "",
@@ -388,8 +446,10 @@ def run_benchmark(
     max_run_seconds: float | None = None,
     task_ids: list[str] | None = None,
     analysis_dir: Path | None = None,
+    subject_mode: str = "manual",
 ) -> dict[str, Path]:
     validate_benchmark_inputs(fixture, agents_file, repeats, agents_dir=agents_dir)
+    subject_audit = audit_subject_source(agents_file, agents_dir, subject_mode=subject_mode)
     out.mkdir(parents=True, exist_ok=True)
     if workspace_root is not None:
         workspace_root.mkdir(parents=True, exist_ok=True)
@@ -420,6 +480,8 @@ def run_benchmark(
                     heartbeat_interval=heartbeat_interval,
                     total_runs=total_runs,
                     max_run_seconds=max_run_seconds,
+                    subject_mode=subject_mode,
+                    subject_audit=subject_audit,
                 )
     emit_progress(progress, {"event": "analysis_start", "results_dir": str(out)})
     outputs = analyze_results(out, output_dir=analysis_dir)
@@ -476,6 +538,17 @@ def write_synthetic_run(run_dir: Path, task: dict[str, Any], variant: str, repea
         "model": "synthetic",
         "fixture_commit": "synthetic",
         "agents_file_bytes": 0,
+        "subject_mode": "synthetic",
+        "agents_source_file_count": 1,
+        "subject_audit": {
+            "mode": "synthetic",
+            "source_type": "synthetic",
+            "path": "synthetic-subject",
+            "file_count": 1,
+            "total_bytes": 2048,
+            "largest_files": [{"path": "AGENTS.md", "bytes": 2048}],
+            "warnings": [],
+        },
         "codex_version": "synthetic",
         "python_version": sys.version.split()[0],
         "codex_command": [],

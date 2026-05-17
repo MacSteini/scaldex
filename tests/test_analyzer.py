@@ -26,6 +26,17 @@ def write_run(base: Path, run_id: str, variant: str, tokens: int, *, include_usa
         "model": "test-model",
         "fixture_commit": "abc",
         "agents_file_bytes": 10,
+        "subject_mode": "package",
+        "agents_source_file_count": 3,
+        "subject_audit": {
+            "mode": "package",
+            "source_type": "dir",
+            "path": "subject",
+            "file_count": 3,
+            "total_bytes": 40000,
+            "largest_files": [{"path": ".codex/instructions.md", "bytes": 30000}],
+            "warnings": ["large_subject"] if variant == "agents" else [],
+        },
     }
     (run / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     events = [
@@ -67,6 +78,7 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual(row["targeted_steps"], 1)
             self.assertEqual(row["risky_full_reads"], 1)
             self.assertEqual(row["large_text_events_over_20kb"], 1)
+            self.assertEqual(row["subject_total_bytes"], 40000)
             self.assertTrue(row["success"])
 
     def test_analyze_results_writes_summary_and_paired_deltas(self) -> None:
@@ -79,6 +91,8 @@ class AnalyzerTests(unittest.TestCase):
                 self.assertTrue(path.exists())
             result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
             self.assertEqual(result["verdict"], "effective")
+            self.assertEqual(result["subject"]["mode"], "package")
+            self.assertIn("large_subject", result["warnings"])
             self.assertTrue(paths["result_md"].read_text(encoding="utf-8").startswith("# Tokenmessung Result"))
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
             deltas = paired_deltas(rows)
@@ -129,11 +143,13 @@ class AnalyzerTests(unittest.TestCase):
                 "median_delta_wall_seconds_agents_minus_control": 20,
                 "median_delta_command_count_agents_minus_control": 5,
                 "median_delta_risky_full_reads_agents_minus_control": 0,
+                "median_delta_first_expected_file_event_index_agents_minus_control": 4,
             },
         }
         result = build_result(summary, [{"task_id": "x"}], [{"model": "m", "codex_version": "c", "fixture_commit": "f", "task_id": "t", "repeat": 1}])
         self.assertEqual(result["verdict"], "mixed")
         self.assertIn("total_observed_tokens_increased", result["warnings"])
+        self.assertIn("agents_found_relevant_file_later", result["warnings"])
 
     def test_build_result_reports_not_effective_when_primary_metric_regresses(self) -> None:
         summary = {

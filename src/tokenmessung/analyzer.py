@@ -119,6 +119,7 @@ def load_json_checked(path: Path, default: Any) -> tuple[Any, bool]:
 
 def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[str, Any]:
     meta = load_json(run_dir / "meta.json", {})
+    subject_audit = meta.get("subject_audit", {})
     task = meta.get("task", {})
     expected_files = task.get("expected_files", [])
     expected_terms = task.get("expected_terms", [])
@@ -198,6 +199,12 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
         "python_version": meta.get("python_version", ""),
         "fixture_commit": meta.get("fixture_commit", ""),
         "agents_file_bytes": meta.get("agents_file_bytes", 0),
+        "subject_mode": meta.get("subject_mode", ""),
+        "agents_source_file_count": meta.get("agents_source_file_count", 0),
+        "subject_total_bytes": subject_audit.get("total_bytes", meta.get("agents_file_bytes", 0)) if isinstance(subject_audit, dict) else meta.get("agents_file_bytes", 0),
+        "subject_warning_count": len(subject_audit.get("warnings", [])) if isinstance(subject_audit, dict) and isinstance(subject_audit.get("warnings"), list) else 0,
+        "subject_warnings": ";".join(subject_audit.get("warnings", [])) if isinstance(subject_audit, dict) and isinstance(subject_audit.get("warnings"), list) else "",
+        "subject_largest_files": json.dumps(subject_audit.get("largest_files", [])[:5], ensure_ascii=False) if isinstance(subject_audit, dict) else "[]",
         "exit_code": exit_code,
         "wall_seconds": time_meta.get("wall_seconds", ""),
         "input_tokens": usage["input_tokens"],
@@ -255,6 +262,9 @@ def aggregate(rows: list[dict[str, Any]], deltas: list[dict[str, Any]], analysis
         "stderr_bytes",
         "large_text_events_over_20kb",
         "expected_files_found_count",
+        "first_expected_file_event_index",
+        "subject_total_bytes",
+        "agents_source_file_count",
     ]
     for variant, variant_rows in sorted(by_variant.items()):
         successes = sum(1 for row in variant_rows if row["success"])
@@ -267,7 +277,8 @@ def aggregate(rows: list[dict[str, Any]], deltas: list[dict[str, Any]], analysis
     if deltas:
         for key in deltas[0]:
             if key.startswith("delta_"):
-                paired_metrics[f"median_{key}"] = median(float(row[key]) for row in deltas)
+                values = [float(row[key]) for row in deltas if row.get(key) not in ("", None)]
+                paired_metrics[f"median_{key}"] = median(values) if values else 0.0
     summary["paired_median_deltas"] = paired_metrics
     return summary
 
@@ -281,6 +292,7 @@ def paired_deltas(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         pairs[(str(row["task_id"]), repeat)][str(row["variant"])] = row
     delta_keys = ["non_cached_input_tokens", "total_observed_tokens", "wall_seconds", "stdout_bytes", "stderr_bytes", "command_count", "risky_full_reads"]
+    optional_delta_keys = ["first_expected_file_event_index"]
     deltas: list[dict[str, Any]] = []
     for (task_id, repeat), pair in sorted(pairs.items()):
         if "agents" not in pair or "control" not in pair:
@@ -288,6 +300,13 @@ def paired_deltas(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         row: dict[str, Any] = {"task_id": task_id, "repeat": repeat}
         for key in delta_keys:
             row[f"delta_{key}_agents_minus_control"] = float(pair["agents"][key]) - float(pair["control"][key])
+        for key in optional_delta_keys:
+            agents_value = pair["agents"].get(key)
+            control_value = pair["control"].get(key)
+            if agents_value not in ("", None) and control_value not in ("", None):
+                row[f"delta_{key}_agents_minus_control"] = float(agents_value) - float(control_value)
+            else:
+                row[f"delta_{key}_agents_minus_control"] = ""
         row["agents_success"] = pair["agents"]["success"]
         row["control_success"] = pair["control"]["success"]
         deltas.append(row)
@@ -347,6 +366,7 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
     wall_delta = median_delta(summary, "wall_seconds")
     command_delta = median_delta(summary, "command_count")
     risky_delta = median_delta(summary, "risky_full_reads")
+    first_expected_delta = median_delta(summary, "first_expected_file_event_index")
     agents_success = success_rate(summary, "agents")
     control_success = success_rate(summary, "control")
 
@@ -361,6 +381,11 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
         secondary_warnings.append("command_count_increased")
     if risky_delta > 0:
         secondary_warnings.append("risky_full_reads_increased")
+    if first_expected_delta > 3:
+        secondary_warnings.append("agents_found_relevant_file_later")
+
+    subject_rows = [row for row in rows if row.get("variant") == "agents"]
+    subject_warning_values = sorted({warning for row in subject_rows for warning in str(row.get("subject_warnings", "")).split(";") if warning})
 
     if not deltas or has_critical_warnings(warnings) or agents_success < control_success or non_cached_delta >= 0:
         verdict = "not_effective"
@@ -374,6 +399,11 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
     fixture_commit = rows[0].get("fixture_commit", "") if rows else ""
     task_ids = sorted({str(row.get("task_id", "")) for row in rows if row.get("task_id")})
     repeats = sorted({int(row["repeat"]) for row in rows if str(row.get("repeat", "")).isdigit()})
+    first_subject_row = subject_rows[0] if subject_rows else {}
+    try:
+        largest_files = json.loads(str(first_subject_row.get("subject_largest_files", "[]")))
+    except json.JSONDecodeError:
+        largest_files = []
 
     return {
         "verdict": verdict,
@@ -393,10 +423,12 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "wall_seconds_delta": wall_delta,
             "command_count_delta": command_delta,
             "risky_full_reads_delta": risky_delta,
+            "first_expected_file_event_index_delta": first_expected_delta,
         },
-        "warnings": warnings + secondary_warnings,
+        "warnings": warnings + secondary_warnings + subject_warning_values,
         "analysis_warnings": warnings,
         "secondary_warnings": secondary_warnings,
+        "subject_warnings": subject_warning_values,
         "context": {
             "runs": summary.get("runs", 0),
             "model": model,
@@ -404,6 +436,13 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "fixture_commit": fixture_commit,
             "task_ids": task_ids,
             "repeats": repeats,
+        },
+        "subject": {
+            "mode": first_subject_row.get("subject_mode", ""),
+            "source_file_count": first_subject_row.get("agents_source_file_count", 0),
+            "total_bytes": first_subject_row.get("subject_total_bytes", 0),
+            "warnings": subject_warning_values,
+            "largest_files": largest_files,
         },
     }
 
@@ -426,6 +465,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     quality = result["quality"]
     secondary = result["secondary"]
     warnings = result["warnings"]
+    subject = result.get("subject", {})
     artifacts = result.get("artifacts", {})
     raw_results_dir = artifacts.get("raw_results_dir", "raw/") if isinstance(artifacts, dict) else "raw/"
     lines = [
@@ -445,16 +485,34 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         f"| Total observed token delta | {format_number(secondary['total_observed_tokens_delta'])} |",
         f"| Wall time delta | {format_number(secondary['wall_seconds_delta'])}s |",
         f"| Command count delta | {format_number(secondary['command_count_delta'])} |",
+        f"| First relevant file event delta | {format_number(secondary.get('first_expected_file_event_index_delta', 0))} |",
+        f"| Subject mode | {subject.get('mode', 'n/a') if isinstance(subject, dict) else 'n/a'} |",
+        f"| Subject files | {format_number(subject.get('source_file_count', 0) if isinstance(subject, dict) else 0)} |",
+        f"| Subject bytes | {format_number(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} |",
         "",
         "## Interpretation",
         "",
     ]
     if result["verdict"] == "effective":
-        lines.append("The AGENTS bundle reduced non-cached input tokens without failing the quality and warning checks.")
+        lines.append("The measured instruction package reduced non-cached input tokens without failing the quality checks.")
     elif result["verdict"] == "mixed":
-        lines.append("The AGENTS bundle improved the primary token metric, but one or more secondary metrics got worse.")
+        lines.append("The measured instruction package improved the primary token metric, but one or more secondary metrics got worse.")
     else:
-        lines.append("The AGENTS bundle did not produce a reliable improvement in this run.")
+        lines.append("The measured instruction package did not produce a reliable improvement in this run.")
+    lines.extend(["", "## Subject", ""])
+    if isinstance(subject, dict):
+        lines.append(f"- Mode: `{subject.get('mode', 'n/a')}`")
+        lines.append(f"- Files: {format_number(subject.get('source_file_count', 0))}")
+        lines.append(f"- Bytes: {format_number(subject.get('total_bytes', 0))}")
+        subject_warnings = subject.get("warnings", [])
+        if subject_warnings:
+            lines.append("- Subject warnings: " + ", ".join(f"`{warning}`" for warning in subject_warnings))
+        else:
+            lines.append("- Subject warnings: none")
+        largest_files = subject.get("largest_files", [])
+        if largest_files:
+            lines.extend(["", "Largest subject files:", ""])
+            lines.extend(f"- `{item.get('path')}`: {format_number(item.get('bytes', 0))} bytes" for item in largest_files[:5] if isinstance(item, dict))
     lines.extend(["", "## Warnings", ""])
     if warnings:
         lines.extend(f"- {warning}" for warning in warnings)
