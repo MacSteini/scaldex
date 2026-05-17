@@ -120,7 +120,13 @@ def print_result(result: dict[str, object]) -> None:
     if isinstance(subject, dict):
         print(f"Subject: {subject.get('mode', 'n/a')} / {format_delta(subject.get('source_file_count'))} files / {human_bytes(subject.get('total_bytes'))} ({format_delta(subject.get('total_bytes'))} bytes)")
     if isinstance(primary, dict):
-        print(f"Non-cached input delta: {format_delta(primary.get('agents_minus_control'))} ({percent_text})")
+        print(f"Paired median non-cached input delta: {format_delta(primary.get('agents_minus_control'))} ({percent_text})")
+        print(
+            "Variant medians: agents {agents} / control {control}".format(
+                agents=format_delta(primary.get("agents_median")),
+                control=format_delta(primary.get("control_median")),
+            )
+        )
     if isinstance(quality, dict):
         print(f"Quality: agents {quality.get('agents_success_rate', 'n/a')} / control {quality.get('control_success_rate', 'n/a')}")
     if isinstance(reliability, dict):

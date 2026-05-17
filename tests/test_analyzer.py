@@ -101,6 +101,8 @@ class AnalyzerTests(unittest.TestCase):
                 self.assertTrue(path.exists())
             result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
             self.assertEqual(result["verdict"], "effective")
+            self.assertEqual(result["primary_delta"]["delta_basis"], "paired_median_of_repeat_deltas")
+            self.assertIn("variant_median_delta", result["primary_delta"])
             self.assertEqual(result["subject"]["mode"], "package")
             self.assertEqual(result["subject"]["total_size"], "39.1 KiB")
             self.assertEqual(result["subject"]["largest_files"][0]["size"], "29.3 KiB")
@@ -114,6 +116,8 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("warning_details", result)
             result_md = paths["result_md"].read_text(encoding="utf-8")
             self.assertTrue(result_md.startswith("# Tokenmessung Result"))
+            self.assertIn("Paired median non-cached input delta", result_md)
+            self.assertIn("Unpaired variant median delta", result_md)
             self.assertIn("## Tool Sanity", result_md)
             self.assertIn("Aggregated command output counted: True", result_md)
             rows = [parse_run(base / "control"), parse_run(base / "agents")]

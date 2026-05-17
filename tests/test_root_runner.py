@@ -47,7 +47,7 @@ def write_fake_outputs(root: Path) -> dict[str, Path]:
         json.dumps(
             {
                 "verdict": "effective",
-                "primary_delta": {"agents_minus_control": -10, "percent": -10.0},
+                "primary_delta": {"agents_minus_control": -10, "percent": -10.0, "agents_median": 90, "control_median": 100},
                 "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
                 "subject": {"mode": "package", "source_file_count": 1, "total_bytes": 9, "total_size": "9 B", "warnings": []},
                 "isolation": {"home_codex_excluded": True},
@@ -120,6 +120,8 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Subject-Audit", error.getvalue())
             self.assertNotIn("sk-test-secret", error.getvalue())
             self.assertIn("Verdict: effective", output.getvalue())
+            self.assertIn("Paired median non-cached input delta", output.getvalue())
+            self.assertIn("Variant medians: agents 90 / control 100", output.getvalue())
             self.assertIn("Isolation: ~/.codex excluded = True", output.getvalue())
             self.assertIn("Subject: package", output.getvalue())
             self.assertIn("Run-Isolation: eigenes CODEX_HOME pro Run", error.getvalue())
