@@ -23,8 +23,8 @@
 | 1 | done | Add console `Next action`. | Console says whether to stop, run decision-grade, record win, or reject efficiency. | Tests cover all action categories; decisions do not use unpaired medians. |
 | 2 | done | Add `RESULT.md` Decision Summary. | First report lines show decision, next action, quality gate, warnings, and claim status. | Benchmark and subject warnings remain separated; integrity failures stay not effective. |
 | 3 | done | Add local multi-task summary. | Existing `result.json` files can produce `TOKENMESSUNG_SUMMARY.md` and `tokenmessung-summary.json` without API calls. | Mixed fingerprints and mixed smoke/decision-grade inputs are explicit. |
-| 4 | in_progress | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior and stop rules. | No auto-run implementation or paid-run trigger added. |
-| 5 | pending | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behavior. |
+| 4 | done | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior and stop rules. | No auto-run implementation or paid-run trigger added. |
+| 5 | in_progress | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behavior. |
 
 ## Verification After Each Step
 
@@ -104,12 +104,52 @@
 
 ## Future Smart Runner Specification
 
-- Status: pending.
+- Status: done.
 - Intended future command shape: `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...`.
-- It must run smoke tasks first, enforce quality gates, and only schedule decision-grade repeats for eligible tasks.
-- It must display planned paid run count before starting.
-- It must stop automatically on quality failures, warning gates, mixed integrity metadata, or exhausted budget.
-- This is specification-only until steps 1-3 are stable.
+- This is specification-only. No implementation exists in this step.
+
+### Intended Command
+
+```sh
+tokenmessung evaluate --subject-dir ./Agent --model gpt-5.4 --budget-runs 12
+```
+
+### Required Behavior
+
+- Resolve and audit the subject once before any paid run.
+- Display the maximum possible paid run count before starting.
+- Run every configured task first with `repeats=1`.
+- Stop a task after smoke when:
+  - agents/control quality is not 1.0/1.0,
+  - benchmark warnings are present,
+  - normalized repo-relative `relevant_files` is false,
+  - integrity status is failed.
+- Run `repeats=3` only for smoke-passing tasks and only while `--budget-runs` still allows it.
+- Never claim global token efficiency unless the multi-task summary rule allows it.
+- Persist every per-task `result.json` in a non-overwriting run folder so `bench summarize` can evaluate all tasks afterward.
+
+### Required Stop Rules
+
+- Stop before starting if planned smoke runs exceed `--budget-runs`.
+- Stop before decision-grade runs if no task passed smoke.
+- Stop on mixed `subject_fingerprint` or mixed `run_config_fingerprint`.
+- Stop on missing authoritative usage data, invalid final JSON, nonzero exit code, missing expected files, or missing expected relevant files.
+- Stop when the user did not explicitly approve the displayed paid-run plan.
+
+### Non-Goals
+
+- Do not implement automatic AGENTS.md optimization.
+- Do not integrate CodeBurn or any external cost dashboard.
+- Do not hide raw path violations; normalized quality and raw path reporting must both remain visible.
+- Do not replace `run_tokenmessung.py` until the evaluate command is proven by local tests and explicit approval.
+
+### Step 4 Audit
+
+- `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
+- `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
+- No `evaluate` command was implemented.
+- No paid-run automation was added.
+- The specification requires explicit approval before any future paid-run plan.
 
 ## Documentation Policy
 
