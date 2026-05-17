@@ -5,6 +5,7 @@ import argparse
 import getpass
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -55,6 +56,16 @@ def tool_sanity_text() -> str:
         f"separated warnings={'on' if TOOL_SANITY['separated_warning_sections'] else 'off'}; "
         f"aggregated command output={'on' if TOOL_SANITY['aggregated_command_output_counted'] else 'off'}."
     )
+
+
+def reset_run_dir(run_dir: Path, root: Path, subject_dir: Path) -> None:
+    if run_dir == root:
+        raise SystemExit("Refusing to use the current folder itself as --run-dir.")
+    if run_dir == subject_dir or subject_dir.is_relative_to(run_dir):
+        raise SystemExit("Refusing to place subject/ inside --run-dir because generated cleanup would remove it.")
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
 
 
 def render_progress(event: dict[str, object]) -> None:
@@ -207,6 +218,9 @@ def main(argv: list[str] | None = None) -> int:
     key_source = ensure_api_key()
     status("API-Key aus Umgebung erkannt." if key_source == "env" else "API-Key lokal eingegeben.")
     status("Run-Isolation: eigenes CODEX_HOME pro Run; ~/.codex wird nicht als Instruction-Quelle gemessen.")
+    if run_dir.exists():
+        status(f"Vorheriger Run-Ordner wird ersetzt: {run_dir}")
+    reset_run_dir(run_dir, root, subject_dir)
     if task_ids is None:
         status("Task-Auswahl: alle Tasks.")
     else:

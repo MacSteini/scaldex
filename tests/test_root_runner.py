@@ -90,8 +90,12 @@ class RootRunnerTests(unittest.TestCase):
             subject = root / "subject"
             subject.mkdir()
             (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            stale = root / "tokenmessung-run" / "raw" / "results" / "old_task__agents__r1" / "meta.json"
+            stale.parent.mkdir(parents=True)
+            stale.write_text('{"run_id":"old"}\n', encoding="utf-8")
 
             def fake_run_benchmark(*args: object, **kwargs: object) -> dict[str, Path]:
+                self.assertFalse(stale.exists())
                 progress = kwargs.get("progress")
                 if callable(progress):
                     progress({"event": "benchmark_start", "total_runs": 2, "repeats": 1, "task_count": 1})
@@ -125,6 +129,7 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Isolation: ~/.codex excluded = True", output.getvalue())
             self.assertIn("Subject: package", output.getvalue())
             self.assertIn("Run-Isolation: eigenes CODEX_HOME pro Run", error.getvalue())
+            self.assertIn("Vorheriger Run-Ordner wird ersetzt", error.getvalue())
             self.assertIn("Tool-Sanity: schema v1", error.getvalue())
             self.assertIn("Geplante bezahlte Codex-Runs: 2", error.getvalue())
             self.assertIn("Reliability: low (1 paired run(s))", output.getvalue())
@@ -143,6 +148,18 @@ class RootRunnerTests(unittest.TestCase):
             self.assertEqual(module.ensure_api_key(), "prompt")
             self.assertEqual(os.environ.get("CODEX_API_KEY"), "sk-test-secret")
         getpass_mock.assert_called_once_with("[tokenmessung] CODEX_API_KEY: ")
+
+    def test_refuses_run_dir_that_would_delete_subject(self) -> None:
+        module = load_root_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subject = root / "tokenmessung-run" / "subject"
+            subject.mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
+                with self.assertRaises(SystemExit) as ctx:
+                    module.main(["--model", "model", "--subject-dir", "tokenmessung-run/subject"])
+            self.assertIn("Refusing to place subject/ inside --run-dir", str(ctx.exception))
 
     def test_all_tasks_disables_low_cost_default(self) -> None:
         module = load_root_runner()
