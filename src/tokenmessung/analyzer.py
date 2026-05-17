@@ -37,10 +37,12 @@ TARGETED_PATTERNS = [
 WARNING_DESCRIPTIONS = {
     "agents_found_relevant_file_later": "The instruction package reached the expected relevant file later than the control run.",
     "command_count_increased": "The instruction package needed more shell commands than the control run.",
+    "command_output_bytes_increased": "The instruction-package run exposed materially more command output text than the control run.",
     "incomplete_pair": "At least one agents/control run pair is missing, so the comparison is incomplete.",
     "invalid_final_json": "A Codex run did not produce valid structured final JSON.",
     "large_subject": "The tested subject package is larger than 32 KiB, so instruction/package size may materially affect input tokens.",
     "low_sample_size": "This is a smoke result based on fewer than 3 paired runs; use --repeats 3 or more for a decision-grade measurement.",
+    "large_text_events_increased": "The instruction-package run produced more large text events over the configured threshold.",
     "missing_expected_files": "A run did not mention all expected files.",
     "missing_turn_completed_usage": "A run did not expose authoritative turn.completed usage; fallback usage parsing was used.",
     "nonzero_exit_code": "A Codex run exited with a non-zero status.",
@@ -84,12 +86,12 @@ def classify_text_bytes(event: Any) -> tuple[int, int, int, int]:
         if not isinstance(node, dict):
             continue
         item_type = node.get("type")
-        for key in ("stdout", "stderr", "text", "output"):
+        for key in ("stdout", "stderr", "aggregated_output", "text", "output"):
             value = node.get(key)
             if not isinstance(value, str):
                 continue
             size = text_bytes(value)
-            if key == "stdout":
+            if key in ("stdout", "aggregated_output"):
                 stdout_bytes += size
             elif key == "stderr":
                 stderr_bytes += size
@@ -315,7 +317,16 @@ def paired_deltas(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         except (TypeError, ValueError):
             continue
         pairs[(str(row["task_id"]), repeat)][str(row["variant"])] = row
-    delta_keys = ["non_cached_input_tokens", "total_observed_tokens", "wall_seconds", "stdout_bytes", "stderr_bytes", "command_count", "risky_full_reads"]
+    delta_keys = [
+        "non_cached_input_tokens",
+        "total_observed_tokens",
+        "wall_seconds",
+        "stdout_bytes",
+        "stderr_bytes",
+        "command_count",
+        "risky_full_reads",
+        "large_text_events_over_20kb",
+    ]
     optional_delta_keys = ["first_expected_file_event_index"]
     deltas: list[dict[str, Any]] = []
     for (task_id, repeat), pair in sorted(pairs.items()):
@@ -414,8 +425,11 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
     non_cached_delta = median_delta(summary, "non_cached_input_tokens")
     total_delta = median_delta(summary, "total_observed_tokens")
     wall_delta = median_delta(summary, "wall_seconds")
+    stdout_delta = median_delta(summary, "stdout_bytes")
+    stderr_delta = median_delta(summary, "stderr_bytes")
     command_delta = median_delta(summary, "command_count")
     risky_delta = median_delta(summary, "risky_full_reads")
+    large_text_delta = median_delta(summary, "large_text_events_over_20kb")
     first_expected_delta = median_delta(summary, "first_expected_file_event_index")
     agents_success = success_rate(summary, "agents")
     control_success = success_rate(summary, "control")
@@ -429,8 +443,12 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
         secondary_warnings.append("wall_time_increased")
     if command_delta > 0:
         secondary_warnings.append("command_count_increased")
+    if stdout_delta + stderr_delta > LARGE_TEXT_BYTES:
+        secondary_warnings.append("command_output_bytes_increased")
     if risky_delta > 0:
         secondary_warnings.append("risky_full_reads_increased")
+    if large_text_delta > 0:
+        secondary_warnings.append("large_text_events_increased")
     if first_expected_delta > 3:
         secondary_warnings.append("agents_found_relevant_file_later")
 
@@ -480,8 +498,11 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
         "secondary": {
             "total_observed_tokens_delta": total_delta,
             "wall_seconds_delta": wall_delta,
+            "stdout_bytes_delta": stdout_delta,
+            "stderr_bytes_delta": stderr_delta,
             "command_count_delta": command_delta,
             "risky_full_reads_delta": risky_delta,
+            "large_text_events_over_20kb_delta": large_text_delta,
             "first_expected_file_event_index_delta": first_expected_delta,
         },
         "warnings": warnings + secondary_warnings + subject_warning_values,
@@ -562,6 +583,8 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         f"| Control success rate | {quality['control_success_rate']:.2f} |",
         f"| Total observed token delta | {format_number(secondary['total_observed_tokens_delta'])} |",
         f"| Wall time delta | {format_number(secondary['wall_seconds_delta'])}s |",
+        f"| Command output delta | {human_bytes(secondary.get('stdout_bytes_delta', 0) + secondary.get('stderr_bytes_delta', 0))} ({format_number(secondary.get('stdout_bytes_delta', 0) + secondary.get('stderr_bytes_delta', 0))} bytes) |",
+        f"| Large text event delta | {format_number(secondary.get('large_text_events_over_20kb_delta', 0))} |",
         f"| Command count delta | {format_number(secondary['command_count_delta'])} |",
         f"| First relevant file event delta | {format_number(secondary.get('first_expected_file_event_index_delta', 0))} |",
         f"| Subject mode | {subject.get('mode', 'n/a') if isinstance(subject, dict) else 'n/a'} |",

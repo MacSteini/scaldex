@@ -50,6 +50,7 @@ def write_run(base: Path, run_id: str, variant: str, tokens: int, *, include_usa
         {"type": "thread.started", "thread_id": "t"},
         {"type": "item.completed", "item": {"type": "command_execution", "command": "bash -lc 'rg passwordPolicy services/auth/src/login.ts'", "stdout": "services/auth/src/login.ts passwordPolicy"}},
         {"type": "item.completed", "item": {"type": "command_execution", "command": "bash -lc 'cat logs/app.log'", "stdout": "x" * 21000}},
+        {"type": "item.completed", "item": {"type": "command_execution", "command": "bash -lc 'rg noisy logs/app.log'", "aggregated_output": "y" * 22000}},
         {"type": "unknown.future", "payload": {"usage": {"input_tokens": 1}}},
     ]
     if include_usage:
@@ -82,9 +83,10 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual(row["input_tokens"], 1000)
             self.assertEqual(row["cached_input_tokens"], 100)
             self.assertEqual(row["non_cached_input_tokens"], 900)
-            self.assertEqual(row["targeted_steps"], 1)
+            self.assertEqual(row["targeted_steps"], 2)
             self.assertEqual(row["risky_full_reads"], 1)
-            self.assertEqual(row["large_text_events_over_20kb"], 1)
+            self.assertGreaterEqual(row["stdout_bytes"], 43000)
+            self.assertEqual(row["large_text_events_over_20kb"], 2)
             self.assertEqual(row["subject_total_bytes"], 40000)
             self.assertTrue(row["home_codex_excluded"])
             self.assertTrue(row["success"])
@@ -156,8 +158,11 @@ class AnalyzerTests(unittest.TestCase):
                 "median_delta_non_cached_input_tokens_agents_minus_control": -200,
                 "median_delta_total_observed_tokens_agents_minus_control": 10000,
                 "median_delta_wall_seconds_agents_minus_control": 20,
+                "median_delta_stdout_bytes_agents_minus_control": 25000,
+                "median_delta_stderr_bytes_agents_minus_control": 0,
                 "median_delta_command_count_agents_minus_control": 5,
                 "median_delta_risky_full_reads_agents_minus_control": 0,
+                "median_delta_large_text_events_over_20kb_agents_minus_control": 1,
                 "median_delta_first_expected_file_event_index_agents_minus_control": 4,
             },
         }
@@ -165,6 +170,8 @@ class AnalyzerTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "mixed")
         self.assertIn("total_observed_tokens_increased", result["warnings"])
         self.assertIn("total_observed_tokens_increased", result["benchmark_warnings"])
+        self.assertIn("command_output_bytes_increased", result["benchmark_warnings"])
+        self.assertIn("large_text_events_increased", result["benchmark_warnings"])
         self.assertIn("agents_found_relevant_file_later", result["warnings"])
 
     def test_reliability_is_normal_after_three_pairs(self) -> None:
