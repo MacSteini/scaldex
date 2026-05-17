@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .analyzer import analyze_results
 from .fixture import create_fixture
+from .multisummary import summarize_results
 from .runner import doctor, run_benchmark, synthesize_benchmark
 
 
@@ -43,6 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
     synthesize_parser.add_argument("--repeats", type=int, default=5)
     synthesize_parser.add_argument("--seed", type=int)
 
+    summarize_parser = bench_subparsers.add_parser("summarize")
+    summarize_parser.add_argument("inputs", nargs="+", type=Path)
+    summarize_parser.add_argument("--out", required=True, type=Path)
+
     doctor_parser = bench_subparsers.add_parser("doctor")
     doctor_parser.add_argument("--require-api-key", action="store_true")
     return parser
@@ -75,6 +80,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "bench" and args.bench_command == "synthesize":
         paths = synthesize_benchmark(args.out, args.repeats, seed=args.seed)
+        print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
+        return 0
+    if args.command == "bench" and args.bench_command == "summarize":
+        paths = summarize_results(args.inputs, args.out)
         print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
         return 0
     if args.command == "bench" and args.bench_command == "doctor":
