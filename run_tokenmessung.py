@@ -95,9 +95,10 @@ def format_delta(value: object) -> str:
 def print_result(result: dict[str, object]) -> None:
     primary = result.get("primary_delta", {})
     quality = result.get("quality", {})
-    warnings = result.get("warnings", [])
+    benchmark_warnings = result.get("benchmark_warnings", result.get("warnings", []))
     artifacts = result.get("artifacts", {})
     subject = result.get("subject", {})
+    reliability = result.get("reliability", {})
     percent = primary.get("percent") if isinstance(primary, dict) else None
     percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
     print("\n=== Tokenmessung Ergebnis ===")
@@ -108,12 +109,22 @@ def print_result(result: dict[str, object]) -> None:
         print(f"Non-cached input delta: {format_delta(primary.get('agents_minus_control'))} ({percent_text})")
     if isinstance(quality, dict):
         print(f"Quality: agents {quality.get('agents_success_rate', 'n/a')} / control {quality.get('control_success_rate', 'n/a')}")
-    if warnings:
-        print("Warnings:")
-        for warning in warnings:
+    if isinstance(reliability, dict):
+        paired_runs = reliability.get("paired_runs", "n/a")
+        level = reliability.get("level", "n/a")
+        print(f"Reliability: {level} ({paired_runs} paired run(s))")
+        for warning in reliability.get("warnings", []):
+            print(f"- {warning}: {explain_warning(str(warning))}")
+    if benchmark_warnings:
+        print("Benchmark warnings:")
+        for warning in benchmark_warnings:
             print(f"- {warning}: {explain_warning(str(warning))}")
     else:
-        print("Warnings: none")
+        print("Benchmark warnings: none")
+    if isinstance(subject, dict):
+        subject_warnings = subject.get("warnings", [])
+        if subject_warnings:
+            print(f"Subject notes: {len(subject_warnings)} note(s); see RESULT.md for details.")
     if isinstance(artifacts, dict):
         print(f"Human report: {artifacts.get('result_md')}")
         print(f"Machine report: {artifacts.get('result_json')}")

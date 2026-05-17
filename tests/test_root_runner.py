@@ -51,6 +51,8 @@ def write_fake_outputs(root: Path) -> dict[str, Path]:
                 "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
                 "subject": {"mode": "package", "source_file_count": 1, "total_bytes": 9, "total_size": "9 B", "warnings": []},
                 "warnings": ["large_subject"],
+                "benchmark_warnings": ["command_count_increased"],
+                "reliability": {"level": "low", "paired_runs": 1, "warnings": ["low_sample_size"]},
                 "artifacts": {
                     "result_json": str(result_json),
                     "result_md": str(run_dir / "RESULT.md"),
@@ -112,7 +114,9 @@ class RootRunnerTests(unittest.TestCase):
             self.assertNotIn("sk-test-secret", error.getvalue())
             self.assertIn("Verdict: effective", output.getvalue())
             self.assertIn("Subject: package", output.getvalue())
-            self.assertIn("large_subject: The tested subject package is larger than 32 KiB", output.getvalue())
+            self.assertIn("Reliability: low (1 paired run(s))", output.getvalue())
+            self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())
+            self.assertNotIn("large_subject: The tested subject package is larger than 32 KiB", output.getvalue())
             for path in (root / "tokenmessung-run").rglob("*"):
                 if path.is_file():
                     text = path.read_text(encoding="utf-8")

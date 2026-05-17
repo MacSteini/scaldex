@@ -95,6 +95,9 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual(result["subject"]["total_size"], "39.1 KiB")
             self.assertEqual(result["subject"]["largest_files"][0]["size"], "29.3 KiB")
             self.assertIn("large_subject", result["warnings"])
+            self.assertNotIn("large_subject", result["benchmark_warnings"])
+            self.assertEqual(result["reliability"]["level"], "low")
+            self.assertIn("low_sample_size", result["reliability"]["warnings"])
             self.assertIn("warning_details", result)
             self.assertTrue(paths["result_md"].read_text(encoding="utf-8").startswith("# Tokenmessung Result"))
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
@@ -152,7 +155,24 @@ class AnalyzerTests(unittest.TestCase):
         result = build_result(summary, [{"task_id": "x"}], [{"model": "m", "codex_version": "c", "fixture_commit": "f", "task_id": "t", "repeat": 1}])
         self.assertEqual(result["verdict"], "mixed")
         self.assertIn("total_observed_tokens_increased", result["warnings"])
+        self.assertIn("total_observed_tokens_increased", result["benchmark_warnings"])
         self.assertIn("agents_found_relevant_file_later", result["warnings"])
+
+    def test_reliability_is_normal_after_three_pairs(self) -> None:
+        summary = {
+            "runs": 6,
+            "analysis_warnings": [],
+            "variants": {
+                "agents": {"success_rate": 1.0, "median_non_cached_input_tokens": 800},
+                "control": {"success_rate": 1.0, "median_non_cached_input_tokens": 1000},
+            },
+            "paired_median_deltas": {
+                "median_delta_non_cached_input_tokens_agents_minus_control": -200,
+            },
+        }
+        result = build_result(summary, [{"task_id": "x"}, {"task_id": "x"}, {"task_id": "x"}], [{"task_id": "t", "repeat": 1}])
+        self.assertEqual(result["reliability"]["level"], "normal")
+        self.assertEqual(result["reliability"]["warnings"], [])
 
     def test_build_result_reports_not_effective_when_primary_metric_regresses(self) -> None:
         summary = {

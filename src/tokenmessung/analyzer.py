@@ -40,6 +40,7 @@ WARNING_DESCRIPTIONS = {
     "incomplete_pair": "At least one agents/control run pair is missing, so the comparison is incomplete.",
     "invalid_final_json": "A Codex run did not produce valid structured final JSON.",
     "large_subject": "The tested subject package is larger than 32 KiB, so instruction/package size may materially affect input tokens.",
+    "low_sample_size": "This is a smoke result based on fewer than 3 paired runs; use --repeats 3 or more for a decision-grade measurement.",
     "missing_expected_files": "A run did not mention all expected files.",
     "missing_turn_completed_usage": "A run did not expose authoritative turn.completed usage; fallback usage parsing was used.",
     "nonzero_exit_code": "A Codex run exited with a non-zero status.",
@@ -430,6 +431,9 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
 
     subject_rows = [row for row in rows if row.get("variant") == "agents"]
     subject_warning_values = sorted({warning for row in subject_rows for warning in str(row.get("subject_warnings", "")).split(";") if warning})
+    reliability_warnings = ["low_sample_size"] if len(deltas) < 3 else []
+    reliability_level = "low" if reliability_warnings else "normal"
+    benchmark_warnings = warnings + secondary_warnings
 
     if not deltas or has_critical_warnings(warnings) or agents_success < control_success or non_cached_delta >= 0:
         verdict = "not_effective"
@@ -477,9 +481,17 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
         },
         "warnings": warnings + secondary_warnings + subject_warning_values,
         "warning_details": warning_details(warnings + secondary_warnings + subject_warning_values),
+        "benchmark_warnings": benchmark_warnings,
+        "benchmark_warning_details": warning_details(benchmark_warnings),
         "analysis_warnings": warnings,
         "secondary_warnings": secondary_warnings,
         "subject_warnings": subject_warning_values,
+        "reliability": {
+            "level": reliability_level,
+            "paired_runs": len(deltas),
+            "warnings": reliability_warnings,
+            "warning_details": warning_details(reliability_warnings),
+        },
         "context": {
             "runs": summary.get("runs", 0),
             "model": model,
@@ -517,8 +529,9 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     primary = result["primary_delta"]
     quality = result["quality"]
     secondary = result["secondary"]
-    warnings = result["warnings"]
+    benchmark_warnings = result.get("benchmark_warnings", result["warnings"])
     subject = result.get("subject", {})
+    reliability = result.get("reliability", {})
     artifacts = result.get("artifacts", {})
     raw_results_dir = artifacts.get("raw_results_dir", "raw/") if isinstance(artifacts, dict) else "raw/"
     lines = [
@@ -542,6 +555,8 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         f"| Subject mode | {subject.get('mode', 'n/a') if isinstance(subject, dict) else 'n/a'} |",
         f"| Subject files | {format_number(subject.get('source_file_count', 0) if isinstance(subject, dict) else 0)} |",
         f"| Subject size | {human_bytes(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} ({format_number(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} bytes) |",
+        f"| Paired runs | {format_number(reliability.get('paired_runs', 0) if isinstance(reliability, dict) else 0)} |",
+        f"| Reliability | {reliability.get('level', 'n/a') if isinstance(reliability, dict) else 'n/a'} |",
         "",
         "## Interpretation",
         "",
@@ -552,6 +567,9 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         lines.append("The measured instruction package improved the primary token metric, but one or more secondary metrics got worse.")
     else:
         lines.append("The measured instruction package did not produce a reliable improvement in this run.")
+    if isinstance(reliability, dict) and reliability.get("warnings"):
+        lines.append("")
+        lines.append("This result is a smoke measurement. Repeat it before treating the verdict as stable.")
     lines.extend(["", "## Subject", ""])
     if isinstance(subject, dict):
         lines.append(f"- Mode: `{subject.get('mode', 'n/a')}`")
@@ -566,11 +584,14 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         if largest_files:
             lines.extend(["", "Largest subject files:", ""])
             lines.extend(f"- `{item.get('path')}`: {human_bytes(item.get('bytes', 0))} ({format_number(item.get('bytes', 0))} bytes)" for item in largest_files[:5] if isinstance(item, dict))
-    lines.extend(["", "## Warnings", ""])
-    if warnings:
-        lines.extend(f"- `{warning}`: {explain_warning(str(warning))}" for warning in warnings)
+    lines.extend(["", "## Benchmark Warnings", ""])
+    if benchmark_warnings:
+        lines.extend(f"- `{warning}`: {explain_warning(str(warning))}" for warning in benchmark_warnings)
     else:
         lines.append("- None")
+    if isinstance(reliability, dict) and reliability.get("warnings"):
+        lines.extend(["", "## Reliability", ""])
+        lines.extend(f"- `{warning}`: {explain_warning(str(warning))}" for warning in reliability.get("warnings", []))
     lines.extend(["", "## Raw Data", "", f"Detailed run artefacts are kept under `{raw_results_dir}` for audit and debugging."])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
