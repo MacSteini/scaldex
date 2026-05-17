@@ -24,7 +24,7 @@
 | 2 | done | Add `RESULT.md` Decision Summary. | First report lines show decision, next action, quality gate, warnings, and claim status. | Benchmark and subject warnings remain separated; integrity failures stay not effective. |
 | 3 | done | Add local multi-task summary. | Existing `result.json` files can produce `TOKENMESSUNG_SUMMARY.md` and `tokenmessung-summary.json` without API calls. | Mixed fingerprints and mixed smoke/decision-grade inputs are explicit. |
 | 4 | done | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior and stop rules. | No auto-run implementation or paid-run trigger added. |
-| 5 | in_progress | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behavior. |
+| 5 | done | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behavior. |
 
 ## Verification After Each Step
 
@@ -96,11 +96,25 @@
 
 ### Step 4
 
-- Status: in_progress
+- Status: done
 - Measurement:
-  - Pending.
+  - Future `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior is specified below.
+  - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
+  - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
 - Audit:
-  - Pending.
+  - No `evaluate` command was implemented.
+  - No paid-run automation was added.
+  - The specification requires explicit approval before any future paid-run plan.
+
+### Step 5
+
+- Status: done
+- Measurement:
+  - No README was created.
+  - `LOCAL_TEST.md` remains the only short local reference.
+- Audit:
+  - End-user documentation remains deferred until the operational UX is stable.
+  - Later README examples must match final CLI behavior.
 
 ## Future Smart Runner Specification
 
@@ -142,14 +156,6 @@ tokenmessung evaluate --subject-dir ./Agent --model gpt-5.4 --budget-runs 12
 - Do not integrate CodeBurn or any external cost dashboard.
 - Do not hide raw path violations; normalized quality and raw path reporting must both remain visible.
 - Do not replace `run_tokenmessung.py` until the evaluate command is proven by local tests and explicit approval.
-
-### Step 4 Audit
-
-- `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
-- `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
-- No `evaluate` command was implemented.
-- No paid-run automation was added.
-- The specification requires explicit approval before any future paid-run plan.
 
 ## Documentation Policy
 
