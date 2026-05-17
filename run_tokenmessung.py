@@ -15,7 +15,7 @@ sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
 from tokenmessung.fixture import create_fixture  # noqa: E402
 from tokenmessung.analyzer import TOOL_SANITY, explain_warning, human_bytes  # noqa: E402
-from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, run_benchmark  # noqa: E402
+from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, new_batch_id, run_benchmark  # noqa: E402
 from tokenmessung.schemas import TASKS  # noqa: E402
 
 
@@ -125,6 +125,7 @@ def print_result(result: dict[str, object]) -> None:
     subject = result.get("subject", {})
     reliability = result.get("reliability", {})
     tool_sanity = result.get("tool_sanity", {})
+    integrity = result.get("integrity", {})
     percent = primary.get("percent") if isinstance(primary, dict) else None
     percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
     print("\n=== Tokenmessung Ergebnis ===")
@@ -134,6 +135,10 @@ def print_result(result: dict[str, object]) -> None:
         print(f"Isolation: ~/.codex excluded = {isolation.get('home_codex_excluded', False)}")
     if isinstance(subject, dict):
         print(f"Subject: {subject.get('mode', 'n/a')} / {format_delta(subject.get('source_file_count'))} files / {human_bytes(subject.get('total_bytes'))} ({format_delta(subject.get('total_bytes'))} bytes)")
+    if isinstance(integrity, dict):
+        print(f"Batch: {integrity.get('batch_id', 'n/a')}")
+        print(f"Subject fingerprint: {integrity.get('subject_fingerprint', 'n/a')}")
+        print(f"Run config fingerprint: {integrity.get('run_config_fingerprint', 'n/a')}")
     if isinstance(primary, dict):
         print(f"Paired median non-cached input delta: {format_delta(primary.get('agents_minus_control'))} ({percent_text})")
         print(
@@ -191,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         agents_file = subject_dir / "AGENTS.md"
     subject_audit = audit_subject_source(agents_file, agents_dir, subject_mode=args.subject_mode)
+    batch_id = new_batch_id()
     status(
         "Subject-Audit: {mode}, {files} Datei(en), Größe {size}.".format(
             mode=subject_audit["mode"],
@@ -217,6 +223,8 @@ def main(argv: list[str] | None = None) -> int:
     planned_task_count = len(TASKS) if task_ids is None else len(task_ids)
     planned_runs = args.repeats * planned_task_count * 2
     status(tool_sanity_text())
+    status(f"Batch-ID: {batch_id}")
+    status(f"Subject-Fingerprint: {subject_audit.get('fingerprint', 'n/a')}")
     status(f"Geplante bezahlte Codex-Runs: {planned_runs} ({planned_task_count} Task(s) × {args.repeats} Repeat(s) × 2 Varianten).")
 
     key_source = ensure_api_key()
@@ -248,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
         task_ids=task_ids,
         analysis_dir=run_dir,
         subject_mode=args.subject_mode,
+        batch_id=batch_id,
     )
     result = json.loads(outputs["result_json"].read_text(encoding="utf-8"))
     result["run_config"] = {

@@ -60,6 +60,12 @@ def write_fake_outputs(root: Path) -> dict[str, Path]:
                     "separated_warning_sections": True,
                     "aggregated_command_output_counted": True,
                 },
+                "integrity": {
+                    "status": "ok",
+                    "batch_id": "batch-test",
+                    "subject_fingerprint": "subject-test",
+                    "run_config_fingerprint": "config-test",
+                },
                 "artifacts": {
                     "result_json": str(result_json),
                     "result_md": str(run_dir / "RESULT.md"),
@@ -132,6 +138,10 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Vorheriger Run-Ordner wird ersetzt", error.getvalue())
             self.assertIn("Tool-Sanity: schema v1", error.getvalue())
             self.assertIn("Geplante bezahlte Codex-Runs: 2", error.getvalue())
+            self.assertIn("Batch-ID:", error.getvalue())
+            self.assertIn("Subject-Fingerprint:", error.getvalue())
+            self.assertIn("Batch: batch-test", output.getvalue())
+            self.assertIn("Subject fingerprint: subject-test", output.getvalue())
             self.assertIn("Reliability: low (1 paired run(s))", output.getvalue())
             self.assertIn("Tool sanity: schema v1", output.getvalue())
             self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())

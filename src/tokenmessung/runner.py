@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import random
 import shutil
@@ -8,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -158,6 +160,39 @@ def should_ignore_subject_path(path: Path) -> bool:
     return any(part in IGNORED_SUBJECT_DIR_NAMES for part in path.parts)
 
 
+def hash_json(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def new_batch_id() -> str:
+    return uuid.uuid4().hex
+
+
+def iter_subject_files(agents_file: Path | None, agents_dir: Path | None) -> list[tuple[str, Path]]:
+    if agents_file is not None:
+        return [("AGENTS.md", agents_file)]
+    assert agents_dir is not None
+    files: list[tuple[str, Path]] = []
+    for path in agents_dir.rglob("*"):
+        relative = path.relative_to(agents_dir)
+        if should_ignore_subject_path(relative) or not path.is_file():
+            continue
+        files.append((relative.as_posix(), path))
+    files.sort(key=lambda item: item[0])
+    return files
+
+
+def subject_fingerprint(agents_file: Path | None, agents_dir: Path | None) -> str:
+    digest = hashlib.sha256()
+    for relative, path in iter_subject_files(agents_file, agents_dir):
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def audit_subject_source(agents_file: Path | None, agents_dir: Path | None, subject_mode: str = "manual") -> dict[str, Any]:
     if agents_file is not None:
         size = agents_file.stat().st_size
@@ -168,19 +203,17 @@ def audit_subject_source(agents_file: Path | None, agents_dir: Path | None, subj
             "path": str(agents_file),
             "file_count": 1,
             "total_bytes": size,
+            "fingerprint": subject_fingerprint(agents_file, None),
             "largest_files": [{"path": agents_file.name, "bytes": size}],
             "warnings": warnings,
         }
     assert agents_dir is not None
     total = 0
     files: list[dict[str, Any]] = []
-    for path in agents_dir.rglob("*"):
-        relative = path.relative_to(agents_dir)
-        if should_ignore_subject_path(relative) or not path.is_file():
-            continue
+    for relative_path, path in iter_subject_files(None, agents_dir):
         size = path.stat().st_size
         total += size
-        files.append({"path": relative.as_posix(), "bytes": size})
+        files.append({"path": relative_path, "bytes": size})
     files.sort(key=lambda item: int(item["bytes"]), reverse=True)
     file_paths = {str(item["path"]) for item in files}
     top_level_dirs = {Path(path).parts[0] for path in file_paths if Path(path).parts}
@@ -201,6 +234,7 @@ def audit_subject_source(agents_file: Path | None, agents_dir: Path | None, subj
         "path": str(agents_dir),
         "file_count": len(files),
         "total_bytes": total,
+        "fingerprint": subject_fingerprint(None, agents_dir),
         "largest_files": files[:10],
         "warnings": warnings,
     }
@@ -224,6 +258,20 @@ def selected_tasks(task_ids: list[str] | None = None) -> list[dict[str, Any]]:
     if missing:
         raise ValueError(f"Unknown task id(s): {', '.join(missing)}")
     return [by_id[task_id] for task_id in task_ids]
+
+
+def make_run_config(*, model: str, tasks: list[dict[str, Any]], repeats: int, seed: int | None, subject_mode: str, fixture_commit_value: str, variants: list[str]) -> dict[str, Any]:
+    task_ids = [str(task["id"]) for task in tasks]
+    return {
+        "model": model,
+        "task_ids": task_ids,
+        "repeats": repeats,
+        "seed": seed,
+        "subject_mode": subject_mode,
+        "fixture_commit": fixture_commit_value,
+        "variants": variants,
+        "expected_run_count": repeats * len(task_ids) * len(variants),
+    }
 
 
 def emit_progress(progress: ProgressCallback | None, event: dict[str, Any]) -> None:
@@ -298,6 +346,10 @@ def run_one(
     max_run_seconds: float | None = None,
     subject_mode: str = "manual",
     subject_audit: dict[str, Any] | None = None,
+    batch_id: str = "",
+    fixture_commit_value: str = "",
+    run_config: dict[str, Any] | None = None,
+    run_config_fingerprint: str = "",
 ) -> None:
     run_id = f"{task['id']}__{variant}__r{repeat}"
     run_dir = out / run_id
@@ -362,7 +414,23 @@ def run_one(
     ]
 
     effective_subject_audit = subject_audit or audit_subject_source(agents_file, agents_dir, subject_mode=subject_mode)
+    effective_fixture_commit = fixture_commit_value or fixture_commit(fixture)
+    effective_run_config = run_config or {
+        "model": model,
+        "task_ids": [task["id"]],
+        "repeats": repeat,
+        "seed": None,
+        "subject_mode": subject_mode,
+        "fixture_commit": effective_fixture_commit,
+        "variants": ["agents", "control"],
+        "expected_run_count": 2,
+    }
+    effective_run_config_fingerprint = run_config_fingerprint or hash_json(effective_run_config)
     meta = {
+        "batch_id": batch_id,
+        "subject_fingerprint": effective_subject_audit.get("fingerprint", ""),
+        "run_config": effective_run_config,
+        "run_config_fingerprint": effective_run_config_fingerprint,
         "run_id": run_id,
         "task_id": task["id"],
         "task": task,
@@ -371,7 +439,7 @@ def run_one(
         "run_order": run_order,
         "model": model,
         "fixture": str(fixture),
-        "fixture_commit": fixture_commit(fixture),
+        "fixture_commit": effective_fixture_commit,
         "agents_source_type": "dir" if agents_dir is not None else "file",
         "agents_file": str(agents_file) if agents_file is not None else "",
         "agents_dir": str(agents_dir) if agents_dir is not None else "",
@@ -469,22 +537,47 @@ def run_benchmark(
     task_ids: list[str] | None = None,
     analysis_dir: Path | None = None,
     subject_mode: str = "manual",
+    batch_id: str | None = None,
 ) -> dict[str, Path]:
     validate_benchmark_inputs(fixture, agents_file, repeats, agents_dir=agents_dir)
     subject_audit = audit_subject_source(agents_file, agents_dir, subject_mode=subject_mode)
+    fixture_commit_value = fixture_commit(fixture)
     prepare_generated_dir(out)
     if workspace_root is not None:
         prepare_generated_dir(workspace_root)
     tasks = selected_tasks(task_ids)
+    variants = ["agents", "control"]
+    effective_batch_id = batch_id or new_batch_id()
+    run_config = make_run_config(
+        model=model,
+        tasks=tasks,
+        repeats=repeats,
+        seed=seed,
+        subject_mode=subject_mode,
+        fixture_commit_value=fixture_commit_value,
+        variants=variants,
+    )
+    run_config_fingerprint = hash_json(run_config)
     randomizer = random.Random(seed)
     run_order = 0
     total_runs = repeats * len(tasks) * 2
-    emit_progress(progress, {"event": "benchmark_start", "total_runs": total_runs, "repeats": repeats, "task_count": len(tasks)})
+    emit_progress(
+        progress,
+        {
+            "event": "benchmark_start",
+            "total_runs": total_runs,
+            "repeats": repeats,
+            "task_count": len(tasks),
+            "batch_id": effective_batch_id,
+            "subject_fingerprint": subject_audit.get("fingerprint", ""),
+            "run_config_fingerprint": run_config_fingerprint,
+        },
+    )
     for repeat in range(1, repeats + 1):
         for task in tasks:
-            variants = ["control", "agents"]
-            randomizer.shuffle(variants)
-            for variant in variants:
+            shuffled_variants = list(variants)
+            randomizer.shuffle(shuffled_variants)
+            for variant in shuffled_variants:
                 run_order += 1
                 run_one(
                     fixture=fixture,
@@ -504,6 +597,10 @@ def run_benchmark(
                     max_run_seconds=max_run_seconds,
                     subject_mode=subject_mode,
                     subject_audit=subject_audit,
+                    batch_id=effective_batch_id,
+                    fixture_commit_value=fixture_commit_value,
+                    run_config=run_config,
+                    run_config_fingerprint=run_config_fingerprint,
                 )
     emit_progress(progress, {"event": "analysis_start", "results_dir": str(out)})
     outputs = analyze_results(out, output_dir=analysis_dir)
@@ -511,7 +608,19 @@ def run_benchmark(
     return outputs
 
 
-def write_synthetic_run(run_dir: Path, task: dict[str, Any], variant: str, repeat: int, run_order: int, rng: random.Random) -> None:
+def write_synthetic_run(
+    run_dir: Path,
+    task: dict[str, Any],
+    variant: str,
+    repeat: int,
+    run_order: int,
+    rng: random.Random,
+    *,
+    batch_id: str,
+    run_config: dict[str, Any],
+    run_config_fingerprint: str,
+    subject_audit: dict[str, Any],
+) -> None:
     run_dir.mkdir(parents=True)
     base_tokens = 4600 + repeat * 73 + len(task["id"]) * 11 + rng.randint(0, 40)
     token_delta = 1300 + rng.randint(0, 120)
@@ -551,6 +660,10 @@ def write_synthetic_run(run_dir: Path, task: dict[str, Any], variant: str, repea
     (run_dir / "exit_code.txt").write_text("0\n", encoding="utf-8")
     (run_dir / "time.json").write_text(json.dumps({"wall_seconds": 1.0 + rng.random()}, indent=2) + "\n", encoding="utf-8")
     meta = {
+        "batch_id": batch_id,
+        "subject_fingerprint": subject_audit["fingerprint"],
+        "run_config": run_config,
+        "run_config_fingerprint": run_config_fingerprint,
         "run_id": run_dir.name,
         "task_id": task["id"],
         "task": task,
@@ -562,15 +675,7 @@ def write_synthetic_run(run_dir: Path, task: dict[str, Any], variant: str, repea
         "agents_file_bytes": 0,
         "subject_mode": "synthetic",
         "agents_source_file_count": 1,
-        "subject_audit": {
-            "mode": "synthetic",
-            "source_type": "synthetic",
-            "path": "synthetic-subject",
-            "file_count": 1,
-            "total_bytes": 2048,
-            "largest_files": [{"path": "AGENTS.md", "bytes": 2048}],
-            "warnings": [],
-        },
+        "subject_audit": subject_audit,
         "codex_version": "synthetic",
         "python_version": sys.version.split()[0],
         "codex_command": [],
@@ -587,6 +692,27 @@ def synthesize_benchmark(out: Path, repeats: int, seed: int | None = None) -> di
     prepare_generated_dir(out, allow_unmarked_existing=True)
     rng = random.Random(seed)
     run_order = 0
+    subject_audit = {
+        "mode": "synthetic",
+        "source_type": "synthetic",
+        "path": "synthetic-subject",
+        "file_count": 1,
+        "total_bytes": 2048,
+        "fingerprint": hash_json({"synthetic_subject": True, "bytes": 2048}),
+        "largest_files": [{"path": "AGENTS.md", "bytes": 2048}],
+        "warnings": [],
+    }
+    run_config = make_run_config(
+        model="synthetic",
+        tasks=list(TASKS),
+        repeats=repeats,
+        seed=seed,
+        subject_mode="synthetic",
+        fixture_commit_value="synthetic",
+        variants=["agents", "control"],
+    )
+    run_config_fingerprint = hash_json(run_config)
+    batch_id = f"synthetic-{hash_json({'seed': seed, 'repeats': repeats, 'tasks': run_config['task_ids']})[:16]}"
     for repeat in range(1, repeats + 1):
         for task in TASKS:
             variants = ["control", "agents"]
@@ -594,7 +720,18 @@ def synthesize_benchmark(out: Path, repeats: int, seed: int | None = None) -> di
             for variant in variants:
                 run_order += 1
                 run_id = f"{task['id']}__{variant}__r{repeat}"
-                write_synthetic_run(out / run_id, task, variant, repeat, run_order, rng)
+                write_synthetic_run(
+                    out / run_id,
+                    task,
+                    variant,
+                    repeat,
+                    run_order,
+                    rng,
+                    batch_id=batch_id,
+                    run_config=run_config,
+                    run_config_fingerprint=run_config_fingerprint,
+                    subject_audit=subject_audit,
+                )
     return analyze_results(out)
 
 

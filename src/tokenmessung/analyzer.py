@@ -17,10 +17,26 @@ TOOL_SANITY = {
 }
 CRITICAL_WARNING_PREFIXES = (
     "incomplete_pair:",
+    "missing_batch_id",
+    "mixed_batch_ids",
+    "missing_subject_fingerprint",
+    "mixed_subject_fingerprints",
+    "missing_run_config_fingerprint",
+    "mixed_run_config_fingerprints",
+    "unexpected_task_repeat_set",
     "missing_turn_completed_usage",
     "invalid_final_json",
     "nonzero_exit_code",
     "missing_expected_files",
+)
+INTEGRITY_WARNING_PREFIXES = (
+    "missing_batch_id",
+    "mixed_batch_ids",
+    "missing_subject_fingerprint",
+    "mixed_subject_fingerprints",
+    "missing_run_config_fingerprint",
+    "mixed_run_config_fingerprints",
+    "unexpected_task_repeat_set",
 )
 
 RISKY_FULL_READ_PATTERNS = [
@@ -50,6 +66,12 @@ WARNING_DESCRIPTIONS = {
     "low_sample_size": "This is a smoke result based on fewer than 3 paired runs; use --repeats 3 or more for a decision-grade measurement.",
     "large_text_events_increased": "The instruction-package run produced more large text events over the configured threshold.",
     "missing_expected_files": "A run did not mention all expected files.",
+    "missing_batch_id": "Run metadata is missing the batch id, so this report cannot prove all rows came from one benchmark invocation.",
+    "mixed_batch_ids": "The result folder contains runs from different benchmark invocations.",
+    "missing_subject_fingerprint": "Run metadata is missing the subject fingerprint, so this report cannot prove a single subject state was measured.",
+    "mixed_subject_fingerprints": "The result folder contains runs measured against different subject/ contents.",
+    "missing_run_config_fingerprint": "Run metadata is missing the run configuration fingerprint.",
+    "mixed_run_config_fingerprints": "The result folder contains runs created with different benchmark configurations.",
     "missing_turn_completed_usage": "A run did not expose authoritative turn.completed usage; fallback usage parsing was used.",
     "nonzero_exit_code": "A Codex run exited with a non-zero status.",
     "risky_full_reads_increased": "The instruction package caused more risky full-file reads than the control run.",
@@ -58,6 +80,7 @@ WARNING_DESCRIPTIONS = {
     "subject_contains_codex_skills": "The tested subject includes .codex/skills/; skills can add useful behaviour but also increase discoverable instruction material.",
     "subject_contains_codex_tooling": "The tested subject includes .codex/config/tooling/; validator/tooling config is included in the measured package.",
     "total_observed_tokens_increased": "Total observed tokens were higher for the instruction-package run.",
+    "unexpected_task_repeat_set": "The observed task/repeat set does not match the run configuration recorded for this batch.",
     "wall_time_increased": "The instruction-package run took materially longer than the control run.",
 }
 
@@ -148,6 +171,7 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
     meta = load_json(run_dir / "meta.json", {})
     subject_audit = meta.get("subject_audit", {})
     run_isolation = meta.get("run_isolation", {})
+    run_config = meta.get("run_config", {})
     task = meta.get("task", {})
     expected_files = task.get("expected_files", [])
     expected_terms = task.get("expected_terms", [])
@@ -218,6 +242,12 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
 
     return {
         "run_id": meta.get("run_id", run_dir.name),
+        "batch_id": meta.get("batch_id", ""),
+        "subject_fingerprint": meta.get("subject_fingerprint", subject_audit.get("fingerprint", "") if isinstance(subject_audit, dict) else ""),
+        "run_config_fingerprint": meta.get("run_config_fingerprint", ""),
+        "expected_task_ids": ";".join(run_config.get("task_ids", [])) if isinstance(run_config, dict) and isinstance(run_config.get("task_ids"), list) else "",
+        "expected_repeats": run_config.get("repeats", "") if isinstance(run_config, dict) else "",
+        "expected_run_count": run_config.get("expected_run_count", "") if isinstance(run_config, dict) else "",
         "task_id": meta.get("task_id", ""),
         "variant": meta.get("variant", ""),
         "repeat": meta.get("repeat", ""),
@@ -278,7 +308,16 @@ def aggregate(rows: list[dict[str, Any]], deltas: list[dict[str, Any]], analysis
     by_variant: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         by_variant[str(row["variant"])].append(row)
-    summary: dict[str, Any] = {"runs": len(rows), "variants": {}, "analysis_warnings": sorted(set(analysis_warnings))}
+    summary: dict[str, Any] = {
+        "runs": len(rows),
+        "variants": {},
+        "analysis_warnings": sorted(set(analysis_warnings)),
+        "integrity": {
+            "batch_ids": nonempty_unique(rows, "batch_id"),
+            "subject_fingerprints": nonempty_unique(rows, "subject_fingerprint"),
+            "run_config_fingerprints": nonempty_unique(rows, "run_config_fingerprint"),
+        },
+    }
     numeric_keys = [
         "input_tokens",
         "cached_input_tokens",
@@ -369,6 +408,45 @@ def incomplete_pair_warnings(rows: list[dict[str, Any]]) -> list[str]:
     return warnings
 
 
+def nonempty_unique(rows: list[dict[str, Any]], key: str) -> list[str]:
+    return sorted({str(row.get(key, "")) for row in rows if row.get(key) not in ("", None)})
+
+
+def integrity_warnings(rows: list[dict[str, Any]]) -> list[str]:
+    warnings: list[str] = []
+    checks = [
+        ("batch_id", "missing_batch_id", "mixed_batch_ids"),
+        ("subject_fingerprint", "missing_subject_fingerprint", "mixed_subject_fingerprints"),
+        ("run_config_fingerprint", "missing_run_config_fingerprint", "mixed_run_config_fingerprints"),
+    ]
+    for key, missing_code, mixed_code in checks:
+        if any(not row.get(key) for row in rows):
+            warnings.append(missing_code)
+            continue
+        if len(nonempty_unique(rows, key)) != 1:
+            warnings.append(mixed_code)
+
+    expected_task_sets = nonempty_unique(rows, "expected_task_ids")
+    expected_repeats = nonempty_unique(rows, "expected_repeats")
+    expected_run_counts = nonempty_unique(rows, "expected_run_count")
+    if len(expected_task_sets) == 1 and len(expected_repeats) == 1 and len(expected_run_counts) == 1:
+        expected_tasks = {task_id for task_id in expected_task_sets[0].split(";") if task_id}
+        try:
+            repeat_count = int(float(expected_repeats[0]))
+            expected_run_count = int(float(expected_run_counts[0]))
+        except ValueError:
+            warnings.append("unexpected_task_repeat_set")
+        else:
+            actual_tasks = {str(row.get("task_id", "")) for row in rows if row.get("task_id")}
+            actual_repeats = {int(row["repeat"]) for row in rows if str(row.get("repeat", "")).isdigit()}
+            expected_repeat_values = set(range(1, repeat_count + 1))
+            if len(rows) != expected_run_count or actual_tasks != expected_tasks or actual_repeats != expected_repeat_values:
+                warnings.append("unexpected_task_repeat_set")
+    else:
+        warnings.append("unexpected_task_repeat_set")
+    return sorted(set(warnings))
+
+
 def number(value: Any) -> float:
     try:
         return float(value)
@@ -422,6 +500,10 @@ def success_rate(summary: dict[str, Any], variant: str) -> float:
 
 def has_critical_warnings(warnings: list[str]) -> bool:
     return any(any(warning.startswith(prefix) for prefix in CRITICAL_WARNING_PREFIXES) for warning in warnings)
+
+
+def has_integrity_warnings(warnings: list[str]) -> bool:
+    return any(any(warning.startswith(prefix) for prefix in INTEGRITY_WARNING_PREFIXES) for warning in warnings)
 
 
 def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -478,6 +560,10 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
     fixture_commit = rows[0].get("fixture_commit", "") if rows else ""
     task_ids = sorted({str(row.get("task_id", "")) for row in rows if row.get("task_id")})
     repeats = sorted({int(row["repeat"]) for row in rows if str(row.get("repeat", "")).isdigit()})
+    integrity_summary = summary.get("integrity", {}) if isinstance(summary.get("integrity", {}), dict) else {}
+    batch_ids = integrity_summary.get("batch_ids", []) if isinstance(integrity_summary, dict) else []
+    subject_fingerprints = integrity_summary.get("subject_fingerprints", []) if isinstance(integrity_summary, dict) else []
+    run_config_fingerprints = integrity_summary.get("run_config_fingerprints", []) if isinstance(integrity_summary, dict) else []
     first_subject_row = subject_rows[0] if subject_rows else {}
     try:
         largest_files = json.loads(str(first_subject_row.get("subject_largest_files", "[]")))
@@ -529,6 +615,15 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "warning_details": warning_details(reliability_warnings),
         },
         "tool_sanity": dict(TOOL_SANITY),
+        "integrity": {
+            "status": "failed" if has_integrity_warnings(warnings) else "ok",
+            "batch_id": batch_ids[0] if len(batch_ids) == 1 else "",
+            "batch_ids": batch_ids,
+            "subject_fingerprint": subject_fingerprints[0] if len(subject_fingerprints) == 1 else "",
+            "subject_fingerprints": subject_fingerprints,
+            "run_config_fingerprint": run_config_fingerprints[0] if len(run_config_fingerprints) == 1 else "",
+            "run_config_fingerprints": run_config_fingerprints,
+        },
         "context": {
             "runs": summary.get("runs", 0),
             "model": model,
@@ -576,6 +671,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     subject = result.get("subject", {})
     reliability = result.get("reliability", {})
     isolation = result.get("isolation", {})
+    integrity = result.get("integrity", {})
     tool_sanity = result.get("tool_sanity", {})
     artifacts = result.get("artifacts", {})
     raw_results_dir = artifacts.get("raw_results_dir", "raw/") if isinstance(artifacts, dict) else "raw/"
@@ -606,6 +702,9 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         f"| Subject size | {human_bytes(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} ({format_number(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} bytes) |",
         f"| Paired runs | {format_number(reliability.get('paired_runs', 0) if isinstance(reliability, dict) else 0)} |",
         f"| Reliability | {reliability.get('level', 'n/a') if isinstance(reliability, dict) else 'n/a'} |",
+        f"| Batch ID | {integrity.get('batch_id', 'n/a') if isinstance(integrity, dict) else 'n/a'} |",
+        f"| Subject fingerprint | {integrity.get('subject_fingerprint', 'n/a') if isinstance(integrity, dict) else 'n/a'} |",
+        f"| Run config fingerprint | {integrity.get('run_config_fingerprint', 'n/a') if isinstance(integrity, dict) else 'n/a'} |",
         f"| Home `~/.codex/` excluded | {isolation.get('home_codex_excluded', False) if isinstance(isolation, dict) else False} |",
         "",
         "## Interpretation",
@@ -626,6 +725,18 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         lines.append(f"- Run isolation reporting: {tool_sanity.get('run_isolation_reporting', False)}")
         lines.append(f"- Separated warning sections: {tool_sanity.get('separated_warning_sections', False)}")
         lines.append(f"- Aggregated command output counted: {tool_sanity.get('aggregated_command_output_counted', False)}")
+    lines.extend(["", "## Integrity", ""])
+    if isinstance(integrity, dict):
+        lines.append(f"- Status: {integrity.get('status', 'n/a')}")
+        lines.append(f"- Batch ID: `{integrity.get('batch_id') or 'n/a'}`")
+        lines.append(f"- Subject fingerprint: `{integrity.get('subject_fingerprint') or 'n/a'}`")
+        lines.append(f"- Run config fingerprint: `{integrity.get('run_config_fingerprint') or 'n/a'}`")
+        if len(integrity.get("batch_ids", [])) > 1:
+            lines.append(f"- Observed batch IDs: `{', '.join(integrity.get('batch_ids', []))}`")
+        if len(integrity.get("subject_fingerprints", [])) > 1:
+            lines.append(f"- Observed subject fingerprints: `{', '.join(integrity.get('subject_fingerprints', []))}`")
+        if len(integrity.get("run_config_fingerprints", [])) > 1:
+            lines.append(f"- Observed run config fingerprints: `{', '.join(integrity.get('run_config_fingerprints', []))}`")
     lines.extend(["", "## Subject", ""])
     if isinstance(subject, dict):
         lines.append(f"- Mode: `{subject.get('mode', 'n/a')}`")
@@ -666,7 +777,7 @@ def analyze_results(results: Path, large_text_bytes: int = LARGE_TEXT_BYTES, out
     output.mkdir(parents=True, exist_ok=True)
     rows.sort(key=lambda row: (str(row["task_id"]), int(row["repeat"]), str(row["variant"])))
     deltas = paired_deltas(rows)
-    warnings = incomplete_pair_warnings(rows)
+    warnings = integrity_warnings(rows) + incomplete_pair_warnings(rows)
     for row in rows:
         if row.get("analysis_warnings"):
             warnings.extend(str(row["analysis_warnings"]).split(";"))

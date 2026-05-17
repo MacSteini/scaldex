@@ -8,7 +8,20 @@ from pathlib import Path
 from tokenmessung.analyzer import analyze_results, build_result, human_bytes, paired_deltas, parse_run
 
 
-def write_run(base: Path, run_id: str, variant: str, tokens: int, *, include_usage: bool = True, valid_final: bool = True, exit_code: str = "0") -> None:
+def write_run(
+    base: Path,
+    run_id: str,
+    variant: str,
+    tokens: int,
+    *,
+    include_usage: bool = True,
+    valid_final: bool = True,
+    exit_code: str = "0",
+    batch_id: str = "batch-test",
+    subject_fingerprint: str = "subject-test",
+    run_config_fingerprint: str = "config-test",
+    expected_run_count: int = 2,
+) -> None:
     run = base / run_id
     run.mkdir()
     task = {
@@ -18,6 +31,19 @@ def write_run(base: Path, run_id: str, variant: str, tokens: int, *, include_usa
     }
     meta = {
         "run_id": run_id,
+        "batch_id": batch_id,
+        "subject_fingerprint": subject_fingerprint,
+        "run_config": {
+            "model": "test-model",
+            "task_ids": ["login_test_failure"],
+            "repeats": 1,
+            "seed": 1,
+            "subject_mode": "package",
+            "fixture_commit": "abc",
+            "variants": ["agents", "control"],
+            "expected_run_count": expected_run_count,
+        },
+        "run_config_fingerprint": run_config_fingerprint,
         "task_id": "login_test_failure",
         "task": task,
         "variant": variant,
@@ -34,6 +60,7 @@ def write_run(base: Path, run_id: str, variant: str, tokens: int, *, include_usa
             "path": "subject",
             "file_count": 3,
             "total_bytes": 40000,
+            "fingerprint": subject_fingerprint,
             "largest_files": [{"path": ".codex/instructions.md", "bytes": 30000}],
             "warnings": ["large_subject"] if variant == "agents" else [],
         },
@@ -113,12 +140,17 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("low_sample_size", result["reliability"]["warnings"])
             self.assertEqual(result["tool_sanity"]["schema_version"], 1)
             self.assertTrue(result["tool_sanity"]["aggregated_command_output_counted"])
+            self.assertEqual(result["integrity"]["status"], "ok")
+            self.assertEqual(result["integrity"]["batch_id"], "batch-test")
+            self.assertEqual(result["integrity"]["subject_fingerprint"], "subject-test")
+            self.assertEqual(result["integrity"]["run_config_fingerprint"], "config-test")
             self.assertIn("warning_details", result)
             result_md = paths["result_md"].read_text(encoding="utf-8")
             self.assertTrue(result_md.startswith("# Tokenmessung Result"))
             self.assertIn("Paired median non-cached input delta", result_md)
             self.assertIn("Unpaired variant median delta", result_md)
             self.assertIn("## Tool Sanity", result_md)
+            self.assertIn("## Integrity", result_md)
             self.assertIn("Aggregated command output counted: True", result_md)
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
             deltas = paired_deltas(rows)
@@ -144,6 +176,20 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("incomplete_pair:login_test_failure:r1", summary["analysis_warnings"])
             result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
             self.assertEqual(result["verdict"], "not_effective")
+
+    def test_analyzer_flags_mixed_integrity_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            write_run(base, "control", "control", 1000, batch_id="batch-a", subject_fingerprint="subject-a", run_config_fingerprint="config-a")
+            write_run(base, "agents", "agents", 700, batch_id="batch-b", subject_fingerprint="subject-b", run_config_fingerprint="config-b")
+            paths = analyze_results(base)
+            summary = json.loads(paths["summary_json"].read_text(encoding="utf-8"))
+            self.assertIn("mixed_batch_ids", summary["analysis_warnings"])
+            self.assertIn("mixed_subject_fingerprints", summary["analysis_warnings"])
+            self.assertIn("mixed_run_config_fingerprints", summary["analysis_warnings"])
+            result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
+            self.assertEqual(result["verdict"], "not_effective")
+            self.assertEqual(result["integrity"]["status"], "failed")
 
     def test_build_result_reports_mixed_when_secondary_metrics_regress(self) -> None:
         summary = {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -7,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tokenmessung.fixture import create_fixture
-from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, copy_fixture, init_git_snapshot, install_agents_dir, install_agents_file, prepare_generated_dir, remove_control_instructions, run_benchmark, run_one, selected_tasks, synthesize_benchmark, validate_benchmark_inputs
+from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, copy_fixture, init_git_snapshot, install_agents_dir, install_agents_file, prepare_generated_dir, remove_control_instructions, run_benchmark, run_one, selected_tasks, subject_fingerprint, synthesize_benchmark, validate_benchmark_inputs
 
 
 class FakeProcess:
@@ -98,6 +99,18 @@ class RunnerVariantTests(unittest.TestCase):
             self.assertIn("subject_contains_codex_skills", audit["warnings"])
             self.assertIn("subject_contains_codex_tooling", audit["warnings"])
             self.assertIn("subject_contains_codex_bin", audit["warnings"])
+            self.assertEqual(len(audit["fingerprint"]), 64)
+
+    def test_subject_fingerprint_is_stable_and_content_sensitive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            subject = Path(tmp) / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            first = subject_fingerprint(None, subject)
+            second = subject_fingerprint(None, subject)
+            self.assertEqual(first, second)
+            (subject / "AGENTS.md").write_text("# Agents changed\n", encoding="utf-8")
+            self.assertNotEqual(first, subject_fingerprint(None, subject))
 
     def test_control_snapshot_is_clean_after_instruction_removal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -198,10 +211,33 @@ class RunnerVariantTests(unittest.TestCase):
                 run_dir.mkdir(parents=True, exist_ok=True)
                 (run_dir / "meta.json").write_text("{}\n", encoding="utf-8")
 
-            with patch("tokenmessung.runner.validate_benchmark_inputs"), patch("tokenmessung.runner.audit_subject_source", return_value={"mode": "manual", "file_count": 1, "total_bytes": 1, "warnings": []}), patch("tokenmessung.runner.selected_tasks", return_value=[task]), patch("tokenmessung.runner.run_one", side_effect=fake_run_one), patch("tokenmessung.runner.analyze_results", return_value={"result_json": out / "result.json"}):
+            with patch("tokenmessung.runner.validate_benchmark_inputs"), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.audit_subject_source", return_value={"mode": "manual", "file_count": 1, "total_bytes": 1, "fingerprint": "subject", "warnings": []}), patch("tokenmessung.runner.selected_tasks", return_value=[task]), patch("tokenmessung.runner.run_one", side_effect=fake_run_one), patch("tokenmessung.runner.analyze_results", return_value={"result_json": out / "result.json"}):
                 run_benchmark(fixture, agents_file, "model", 1, out, workspace_root=workspace_root)
             self.assertTrue((out / GENERATED_MARKER).exists())
             self.assertTrue((workspace_root / GENERATED_MARKER).exists())
+
+    def test_run_benchmark_passes_same_batch_id_and_config_to_all_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            out = base / "results"
+            workspace_root = base / "workspaces"
+            fixture = base / "fixture"
+            agents_file = fixture / "AGENTS.md"
+            task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
+            seen: list[dict[str, object]] = []
+
+            def fake_run_one(**kwargs: object) -> None:
+                seen.append(kwargs)
+                run_dir = Path(kwargs["out"]) / f"{task['id']}__{kwargs['variant']}__r{kwargs['repeat']}"
+                run_dir.mkdir(parents=True, exist_ok=True)
+                (run_dir / "meta.json").write_text("{}\n", encoding="utf-8")
+
+            with patch("tokenmessung.runner.validate_benchmark_inputs"), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.audit_subject_source", return_value={"mode": "manual", "file_count": 1, "total_bytes": 1, "fingerprint": "subject-fp", "warnings": []}), patch("tokenmessung.runner.selected_tasks", return_value=[task]), patch("tokenmessung.runner.run_one", side_effect=fake_run_one), patch("tokenmessung.runner.analyze_results", return_value={"result_json": out / "result.json"}):
+                run_benchmark(fixture, agents_file, "model", 2, out, seed=7, workspace_root=workspace_root, batch_id="batch-fixed")
+            self.assertEqual(len(seen), 4)
+            self.assertEqual({item["batch_id"] for item in seen}, {"batch-fixed"})
+            self.assertEqual({item["run_config_fingerprint"] for item in seen}, {seen[0]["run_config_fingerprint"]})
+            self.assertEqual(seen[0]["run_config"]["expected_run_count"], 4)
 
     def test_synthesize_benchmark_creates_complete_paired_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -210,6 +246,12 @@ class RunnerVariantTests(unittest.TestCase):
             self.assertTrue(paths["summary_csv"].exists())
             self.assertEqual(len(list(out.glob("*/meta.json"))), 16)
             self.assertTrue((out / "paired-deltas.csv").read_text(encoding="utf-8"))
+            first_meta = json.loads(next(out.glob("*/meta.json")).read_text(encoding="utf-8"))
+            second_out = Path(tmp) / "synthetic-again"
+            synthesize_benchmark(second_out, repeats=2, seed=1)
+            second_meta = json.loads(next(second_out.glob("*/meta.json")).read_text(encoding="utf-8"))
+            self.assertEqual(first_meta["batch_id"], second_meta["batch_id"])
+            self.assertEqual(first_meta["run_config_fingerprint"], second_meta["run_config_fingerprint"])
 
     def test_run_one_records_cleanup_default_and_keep(self) -> None:
         class FakeResult:
