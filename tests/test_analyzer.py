@@ -151,12 +151,16 @@ class AnalyzerTests(unittest.TestCase):
                     "median_non_cached_input_tokens": 800,
                     "median_total_observed_tokens": 20000,
                     "median_wall_seconds": 30,
+                    "median_stdout_bytes": 25000,
+                    "median_stderr_bytes": 0,
                 },
                 "control": {
                     "success_rate": 1.0,
                     "median_non_cached_input_tokens": 1000,
                     "median_total_observed_tokens": 10000,
                     "median_wall_seconds": 10,
+                    "median_stdout_bytes": 0,
+                    "median_stderr_bytes": 0,
                 },
             },
             "paired_median_deltas": {
@@ -178,6 +182,43 @@ class AnalyzerTests(unittest.TestCase):
         self.assertIn("command_output_bytes_increased", result["benchmark_warnings"])
         self.assertIn("large_text_events_increased", result["benchmark_warnings"])
         self.assertIn("agents_found_relevant_file_later", result["warnings"])
+
+    def test_command_output_warning_requires_relative_regression(self) -> None:
+        summary = {
+            "runs": 6,
+            "analysis_warnings": [],
+            "variants": {
+                "agents": {
+                    "success_rate": 1.0,
+                    "median_non_cached_input_tokens": 900,
+                    "median_total_observed_tokens": 10000,
+                    "median_wall_seconds": 10,
+                    "median_stdout_bytes": 356000,
+                    "median_stderr_bytes": 0,
+                },
+                "control": {
+                    "success_rate": 1.0,
+                    "median_non_cached_input_tokens": 1000,
+                    "median_total_observed_tokens": 10000,
+                    "median_wall_seconds": 10,
+                    "median_stdout_bytes": 332000,
+                    "median_stderr_bytes": 0,
+                },
+            },
+            "paired_median_deltas": {
+                "median_delta_non_cached_input_tokens_agents_minus_control": -100,
+                "median_delta_total_observed_tokens_agents_minus_control": 0,
+                "median_delta_wall_seconds_agents_minus_control": 0,
+                "median_delta_stdout_bytes_agents_minus_control": 24000,
+                "median_delta_stderr_bytes_agents_minus_control": 0,
+                "median_delta_command_count_agents_minus_control": 0,
+                "median_delta_risky_full_reads_agents_minus_control": 0,
+                "median_delta_large_text_events_over_20kb_agents_minus_control": 0,
+                "median_delta_first_expected_file_event_index_agents_minus_control": 0,
+            },
+        }
+        result = build_result(summary, [{"task_id": "x"}, {"task_id": "x"}, {"task_id": "x"}], [{"task_id": "t", "repeat": 1}])
+        self.assertNotIn("command_output_bytes_increased", result["benchmark_warnings"])
 
     def test_reliability_is_normal_after_three_pairs(self) -> None:
         summary = {

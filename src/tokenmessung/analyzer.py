@@ -443,13 +443,15 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
     secondary_warnings: list[str] = []
     control_total = variant_median(summary, "control", "total_observed_tokens")
     control_wall = variant_median(summary, "control", "wall_seconds")
+    control_command_output = variant_median(summary, "control", "stdout_bytes") + variant_median(summary, "control", "stderr_bytes")
+    command_output_delta = stdout_delta + stderr_delta
     if total_delta > max(1000.0, control_total * 0.10):
         secondary_warnings.append("total_observed_tokens_increased")
     if wall_delta > max(5.0, control_wall * 0.20):
         secondary_warnings.append("wall_time_increased")
     if command_delta > 0:
         secondary_warnings.append("command_count_increased")
-    if stdout_delta + stderr_delta > LARGE_TEXT_BYTES:
+    if command_output_delta > max(float(LARGE_TEXT_BYTES), control_command_output * 0.10):
         secondary_warnings.append("command_output_bytes_increased")
     if risky_delta > 0:
         secondary_warnings.append("risky_full_reads_increased")
