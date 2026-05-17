@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tokenmessung.analyzer import analyze_results, build_result, paired_deltas, parse_run
+from tokenmessung.analyzer import analyze_results, build_result, human_bytes, paired_deltas, parse_run
 
 
 def write_run(base: Path, run_id: str, variant: str, tokens: int, *, include_usage: bool = True, valid_final: bool = True, exit_code: str = "0") -> None:
@@ -92,7 +92,10 @@ class AnalyzerTests(unittest.TestCase):
             result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
             self.assertEqual(result["verdict"], "effective")
             self.assertEqual(result["subject"]["mode"], "package")
+            self.assertEqual(result["subject"]["total_size"], "39.1 KiB")
+            self.assertEqual(result["subject"]["largest_files"][0]["size"], "29.3 KiB")
             self.assertIn("large_subject", result["warnings"])
+            self.assertIn("warning_details", result)
             self.assertTrue(paths["result_md"].read_text(encoding="utf-8").startswith("# Tokenmessung Result"))
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
             deltas = paired_deltas(rows)
@@ -165,6 +168,11 @@ class AnalyzerTests(unittest.TestCase):
         }
         result = build_result(summary, [{"task_id": "x"}], [{"task_id": "t", "repeat": 1}])
         self.assertEqual(result["verdict"], "not_effective")
+
+    def test_human_bytes_formats_sizes(self) -> None:
+        self.assertEqual(human_bytes(999), "999 B")
+        self.assertEqual(human_bytes(228074), "222.7 KiB")
+        self.assertEqual(human_bytes(5 * 1024 * 1024), "5.0 MiB")
 
 
 if __name__ == "__main__":

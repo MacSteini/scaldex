@@ -13,6 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
 from tokenmessung.fixture import create_fixture  # noqa: E402
+from tokenmessung.analyzer import explain_warning, human_bytes  # noqa: E402
 from tokenmessung.runner import audit_subject_source, run_benchmark  # noqa: E402
 from tokenmessung.schemas import TASKS  # noqa: E402
 
@@ -102,13 +103,15 @@ def print_result(result: dict[str, object]) -> None:
     print("\n=== Tokenmessung Ergebnis ===")
     print(f"Verdict: {result.get('verdict', 'unknown')}")
     if isinstance(subject, dict):
-        print(f"Subject: {subject.get('mode', 'n/a')} / {format_delta(subject.get('source_file_count'))} files / {format_delta(subject.get('total_bytes'))} bytes")
+        print(f"Subject: {subject.get('mode', 'n/a')} / {format_delta(subject.get('source_file_count'))} files / {human_bytes(subject.get('total_bytes'))} ({format_delta(subject.get('total_bytes'))} bytes)")
     if isinstance(primary, dict):
         print(f"Non-cached input delta: {format_delta(primary.get('agents_minus_control'))} ({percent_text})")
     if isinstance(quality, dict):
         print(f"Quality: agents {quality.get('agents_success_rate', 'n/a')} / control {quality.get('control_success_rate', 'n/a')}")
     if warnings:
-        print("Warnings: " + ", ".join(str(warning) for warning in warnings))
+        print("Warnings:")
+        for warning in warnings:
+            print(f"- {warning}: {explain_warning(str(warning))}")
     else:
         print("Warnings: none")
     if isinstance(artifacts, dict):
@@ -134,19 +137,21 @@ def main(argv: list[str] | None = None) -> int:
         agents_file = subject_dir / "AGENTS.md"
     subject_audit = audit_subject_source(agents_file, agents_dir, subject_mode=args.subject_mode)
     status(
-        "Subject-Audit: {mode}, {files} Datei(en), {bytes} Bytes.".format(
+        "Subject-Audit: {mode}, {files} Datei(en), Größe {size}.".format(
             mode=subject_audit["mode"],
             files=subject_audit["file_count"],
-            bytes=subject_audit["total_bytes"],
+            size=f"{human_bytes(subject_audit['total_bytes'])} ({subject_audit['total_bytes']} bytes)",
         )
     )
     largest_files = subject_audit.get("largest_files", [])
     if largest_files:
-        top = ", ".join(f"{item['path']} ({item['bytes']} B)" for item in largest_files[:3])
+        top = ", ".join(f"{item['path']} ({human_bytes(item['bytes'])}, {item['bytes']} bytes)" for item in largest_files[:3])
         status(f"Größte Subject-Dateien: {top}.")
     warnings = subject_audit.get("warnings", [])
     if warnings:
-        status("Subject-Warnungen: " + ", ".join(str(warning) for warning in warnings) + ".")
+        status("Subject-Warnungen:")
+        for warning in warnings:
+            status(f"- {warning}: {explain_warning(str(warning))}")
 
     run_dir = (root / args.run_dir).resolve()
     raw_dir = run_dir / "raw"

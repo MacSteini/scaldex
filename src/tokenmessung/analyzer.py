@@ -34,6 +34,24 @@ TARGETED_PATTERNS = [
     re.compile(r"\btail\b"),
 ]
 
+WARNING_DESCRIPTIONS = {
+    "agents_found_relevant_file_later": "The instruction package reached the expected relevant file later than the control run.",
+    "command_count_increased": "The instruction package needed more shell commands than the control run.",
+    "incomplete_pair": "At least one agents/control run pair is missing, so the comparison is incomplete.",
+    "invalid_final_json": "A Codex run did not produce valid structured final JSON.",
+    "large_subject": "The tested subject package is larger than 32 KiB, so instruction/package size may materially affect input tokens.",
+    "missing_expected_files": "A run did not mention all expected files.",
+    "missing_turn_completed_usage": "A run did not expose authoritative turn.completed usage; fallback usage parsing was used.",
+    "nonzero_exit_code": "A Codex run exited with a non-zero status.",
+    "risky_full_reads_increased": "The instruction package caused more risky full-file reads than the control run.",
+    "subject_contains_codex": "The tested subject includes a .codex/ directory, so this measures a full Codex instruction package, not only AGENTS.md.",
+    "subject_contains_codex_bin": "The tested subject includes .codex/bin/ helper scripts; they may be discovered even when they are not needed for the task.",
+    "subject_contains_codex_skills": "The tested subject includes .codex/skills/; skills can add useful behaviour but also increase discoverable instruction material.",
+    "subject_contains_codex_tooling": "The tested subject includes .codex/config/tooling/; validator/tooling config is included in the measured package.",
+    "total_observed_tokens_increased": "Total observed tokens were higher for the instruction-package run.",
+    "wall_time_increased": "The instruction-package run took materially longer than the control run.",
+}
+
 
 def walk(obj: Any) -> Iterable[Any]:
     yield obj
@@ -335,6 +353,32 @@ def number(value: Any) -> float:
         return 0.0
 
 
+def human_bytes(value: Any) -> str:
+    size = number(value)
+    units = ["B", "KiB", "MiB", "GiB"]
+    unit_index = 0
+    while abs(size) >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(size)} {units[unit_index]}"
+    return f"{size:.1f} {units[unit_index]}"
+
+
+def warning_label(warning: str) -> str:
+    if warning.startswith("incomplete_pair:"):
+        return "incomplete_pair"
+    return warning
+
+
+def explain_warning(warning: str) -> str:
+    return WARNING_DESCRIPTIONS.get(warning_label(warning), "Review this warning in the raw analysis output.")
+
+
+def warning_details(warnings: list[Any]) -> list[dict[str, str]]:
+    return [{"code": str(warning), "message": explain_warning(str(warning))} for warning in warnings]
+
+
 def percent_delta(delta: float, baseline: float) -> float | None:
     if baseline == 0:
         return None
@@ -404,6 +448,12 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
         largest_files = json.loads(str(first_subject_row.get("subject_largest_files", "[]")))
     except json.JSONDecodeError:
         largest_files = []
+    readable_largest_files = []
+    for item in largest_files:
+        if isinstance(item, dict):
+            readable = dict(item)
+            readable["size"] = human_bytes(readable.get("bytes", 0))
+            readable_largest_files.append(readable)
 
     return {
         "verdict": verdict,
@@ -426,6 +476,7 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "first_expected_file_event_index_delta": first_expected_delta,
         },
         "warnings": warnings + secondary_warnings + subject_warning_values,
+        "warning_details": warning_details(warnings + secondary_warnings + subject_warning_values),
         "analysis_warnings": warnings,
         "secondary_warnings": secondary_warnings,
         "subject_warnings": subject_warning_values,
@@ -441,8 +492,10 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "mode": first_subject_row.get("subject_mode", ""),
             "source_file_count": first_subject_row.get("agents_source_file_count", 0),
             "total_bytes": first_subject_row.get("subject_total_bytes", 0),
+            "total_size": human_bytes(first_subject_row.get("subject_total_bytes", 0)),
             "warnings": subject_warning_values,
-            "largest_files": largest_files,
+            "warning_details": warning_details(subject_warning_values),
+            "largest_files": readable_largest_files,
         },
     }
 
@@ -488,7 +541,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         f"| First relevant file event delta | {format_number(secondary.get('first_expected_file_event_index_delta', 0))} |",
         f"| Subject mode | {subject.get('mode', 'n/a') if isinstance(subject, dict) else 'n/a'} |",
         f"| Subject files | {format_number(subject.get('source_file_count', 0) if isinstance(subject, dict) else 0)} |",
-        f"| Subject bytes | {format_number(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} |",
+        f"| Subject size | {human_bytes(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} ({format_number(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} bytes) |",
         "",
         "## Interpretation",
         "",
@@ -503,19 +556,19 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     if isinstance(subject, dict):
         lines.append(f"- Mode: `{subject.get('mode', 'n/a')}`")
         lines.append(f"- Files: {format_number(subject.get('source_file_count', 0))}")
-        lines.append(f"- Bytes: {format_number(subject.get('total_bytes', 0))}")
+        lines.append(f"- Size: {human_bytes(subject.get('total_bytes', 0))} ({format_number(subject.get('total_bytes', 0))} bytes)")
         subject_warnings = subject.get("warnings", [])
         if subject_warnings:
-            lines.append("- Subject warnings: " + ", ".join(f"`{warning}`" for warning in subject_warnings))
+            lines.extend(f"- Subject warning `{warning}`: {explain_warning(str(warning))}" for warning in subject_warnings)
         else:
             lines.append("- Subject warnings: none")
         largest_files = subject.get("largest_files", [])
         if largest_files:
             lines.extend(["", "Largest subject files:", ""])
-            lines.extend(f"- `{item.get('path')}`: {format_number(item.get('bytes', 0))} bytes" for item in largest_files[:5] if isinstance(item, dict))
+            lines.extend(f"- `{item.get('path')}`: {human_bytes(item.get('bytes', 0))} ({format_number(item.get('bytes', 0))} bytes)" for item in largest_files[:5] if isinstance(item, dict))
     lines.extend(["", "## Warnings", ""])
     if warnings:
-        lines.extend(f"- {warning}" for warning in warnings)
+        lines.extend(f"- `{warning}`: {explain_warning(str(warning))}" for warning in warnings)
     else:
         lines.append("- None")
     lines.extend(["", "## Raw Data", "", f"Detailed run artefacts are kept under `{raw_results_dir}` for audit and debugging."])
