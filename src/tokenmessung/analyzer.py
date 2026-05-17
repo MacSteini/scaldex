@@ -194,6 +194,16 @@ def is_repo_relative_relevant_file(value: str) -> bool:
     return ".." not in normalized.split("/")
 
 
+def normalize_relevant_file(value: str, workdir: Path | None) -> str:
+    normalized = value.replace("\\", "/")
+    if not workdir or not Path(normalized).is_absolute():
+        return normalized
+    try:
+        return Path(normalized).resolve().relative_to(workdir.resolve()).as_posix()
+    except ValueError:
+        return normalized
+
+
 def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[str, Any]:
     meta = load_json(run_dir / "meta.json", {})
     subject_audit = meta.get("subject_audit", {})
@@ -252,8 +262,14 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
     relevant_files, malformed_relevant_files = final_relevant_files(final)
     if final_valid and malformed_relevant_files:
         analysis_warnings.append("malformed_relevant_files")
-    expected_relevant_files_found = [path for path in expected_files if path in relevant_files]
-    non_repo_relative_relevant_files = [path for path in relevant_files if not is_repo_relative_relevant_file(path)]
+    workdir_value = meta.get("workdir")
+    workdir = Path(workdir_value) if isinstance(workdir_value, str) and workdir_value else None
+    normalized_relevant_files = [normalize_relevant_file(path, workdir) for path in relevant_files]
+    expected_relevant_files_found = [path for path in expected_files if path in normalized_relevant_files]
+    raw_non_repo_relative_relevant_files = [path for path in relevant_files if not is_repo_relative_relevant_file(path)]
+    non_repo_relative_relevant_files = [
+        path for path in normalized_relevant_files if not is_repo_relative_relevant_file(path)
+    ]
     if expected_files and len(expected_relevant_files_found) != len(expected_files):
         analysis_warnings.append("missing_expected_relevant_files")
     if non_repo_relative_relevant_files:
@@ -329,13 +345,15 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
         "expected_files_count": len(expected_files),
         "expected_files_found_count": len(expected_files_found),
         "expected_files_found": ";".join(expected_files_found),
-        "final_relevant_files_count": len(relevant_files),
-        "final_relevant_files": ";".join(relevant_files),
+        "final_relevant_files_count": len(normalized_relevant_files),
+        "final_relevant_files": ";".join(normalized_relevant_files),
         "expected_relevant_files_found_count": len(expected_relevant_files_found),
         "expected_relevant_files_found": ";".join(expected_relevant_files_found),
-        "repo_relative_relevant_files_only": not non_repo_relative_relevant_files,
+        "repo_relative_relevant_files_only": not raw_non_repo_relative_relevant_files,
         "non_repo_relative_relevant_files_count": len(non_repo_relative_relevant_files),
         "non_repo_relative_relevant_files": ";".join(non_repo_relative_relevant_files),
+        "raw_non_repo_relative_relevant_files_count": len(raw_non_repo_relative_relevant_files),
+        "raw_non_repo_relative_relevant_files": ";".join(raw_non_repo_relative_relevant_files),
         "expected_terms_found": ";".join(expected_terms_found),
         "first_expected_file_event_index": first_expected_event_index if first_expected_event_index is not None else "",
         "success": success,
@@ -605,6 +623,14 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             if path
         }
     )
+    raw_non_repo_relative_relevant_files = sorted(
+        {
+            path
+            for row in rows
+            for path in str(row.get("raw_non_repo_relative_relevant_files", "")).split(";")
+            if path
+        }
+    )
     missing_expected_relevant_files = sorted(
         {
             path
@@ -661,8 +687,10 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "control_success_rate": control_success,
         },
         "final_relevant_files": {
-            "repo_relative_only": not non_repo_relative_relevant_files,
+            "repo_relative_only": not raw_non_repo_relative_relevant_files,
+            "normalized_repo_relative_only": not non_repo_relative_relevant_files,
             "non_repo_relative_paths": non_repo_relative_relevant_files,
+            "raw_non_repo_relative_paths": raw_non_repo_relative_relevant_files,
             "missing_expected_paths": missing_expected_relevant_files,
         },
         "secondary": {
@@ -804,9 +832,13 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     lines.extend(["", "## Final Relevant Files", ""])
     if isinstance(final_relevant, dict):
         lines.append(f"- Repo-relative only: {final_relevant.get('repo_relative_only', False)}")
+        lines.append(f"- Normalized repo-relative only: {final_relevant.get('normalized_repo_relative_only', False)}")
         non_relative_paths = final_relevant.get("non_repo_relative_paths", [])
         if non_relative_paths:
-            lines.extend(f"- Non-repo-relative path: `{path}`" for path in non_relative_paths)
+            lines.extend(f"- Non-repo-relative path after normalisation: `{path}`" for path in non_relative_paths)
+        raw_non_relative_paths = final_relevant.get("raw_non_repo_relative_paths", [])
+        if raw_non_relative_paths:
+            lines.extend(f"- Raw non-repo-relative path: `{path}`" for path in raw_non_relative_paths)
         missing_expected_paths = final_relevant.get("missing_expected_paths", [])
         if missing_expected_paths:
             lines.extend(f"- Missing expected relevant file: `{path}`" for path in missing_expected_paths)

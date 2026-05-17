@@ -22,6 +22,7 @@ def write_run(
     run_config_fingerprint: str = "config-test",
     expected_run_count: int = 2,
     relevant_files: list[str] | None = None,
+    workdir: Path | None = None,
 ) -> None:
     run = base / run_id
     run.mkdir()
@@ -72,6 +73,7 @@ def write_run(
             "isolated_codex_home": True,
             "home_codex_excluded": True,
         },
+        "workdir": str(workdir) if workdir is not None else "",
     }
     (run / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     events = [
@@ -182,10 +184,33 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual(result["verdict"], "not_effective")
             self.assertFalse(result["final_relevant_files"]["repo_relative_only"])
             self.assertIn("/tmp/repo/services/auth/src/login.ts", result["final_relevant_files"]["non_repo_relative_paths"])
+            self.assertIn("/tmp/repo/services/auth/src/login.ts", result["final_relevant_files"]["raw_non_repo_relative_paths"])
             self.assertIn("non_repo_relative_relevant_files", result["benchmark_warnings"])
             agents_row = parse_run(base / "agents")
             self.assertFalse(agents_row["repo_relative_relevant_files_only"])
             self.assertIn("non_repo_relative_relevant_files", agents_row["analysis_warnings"])
+
+    def test_analyzer_normalises_workspace_absolute_relevant_files_for_quality(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "workspace" / "repo"
+            repo.mkdir(parents=True)
+            absolute_relevant = str(repo / "services/auth/src/login.ts")
+            write_run(base, "control", "control", 1000, relevant_files=[absolute_relevant], workdir=repo)
+            write_run(base, "agents", "agents", 700, workdir=repo)
+            paths = analyze_results(base)
+            result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
+            self.assertEqual(result["verdict"], "effective")
+            self.assertFalse(result["final_relevant_files"]["repo_relative_only"])
+            self.assertTrue(result["final_relevant_files"]["normalized_repo_relative_only"])
+            self.assertIn(absolute_relevant, result["final_relevant_files"]["raw_non_repo_relative_paths"])
+            self.assertNotIn("missing_expected_relevant_files", result["benchmark_warnings"])
+            self.assertNotIn("non_repo_relative_relevant_files", result["benchmark_warnings"])
+            control_row = parse_run(base / "control")
+            self.assertTrue(control_row["success"])
+            self.assertEqual(control_row["final_relevant_files"], "services/auth/src/login.ts")
+            self.assertEqual(control_row["expected_relevant_files_found_count"], 1)
+            self.assertEqual(control_row["raw_non_repo_relative_relevant_files_count"], 1)
 
     def test_analyzer_flags_missing_expected_relevant_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

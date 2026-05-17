@@ -152,6 +152,7 @@ def print_result(result: dict[str, object]) -> None:
         print(f"Quality: agents {quality.get('agents_success_rate', 'n/a')} / control {quality.get('control_success_rate', 'n/a')}")
     if isinstance(final_relevant, dict):
         print(f"Repo-relative relevant_files only: {final_relevant.get('repo_relative_only', False)}")
+        print(f"Normalized repo-relative relevant_files only: {final_relevant.get('normalized_repo_relative_only', False)}")
     if isinstance(reliability, dict):
         paired_runs = reliability.get("paired_runs", "n/a")
         level = reliability.get("level", "n/a")
