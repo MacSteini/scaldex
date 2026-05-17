@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tokenmessung.fixture import create_fixture
-from tokenmessung.runner import audit_subject_source, copy_fixture, init_git_snapshot, install_agents_dir, install_agents_file, remove_control_instructions, run_one, selected_tasks, synthesize_benchmark, validate_benchmark_inputs
+from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, copy_fixture, init_git_snapshot, install_agents_dir, install_agents_file, prepare_generated_dir, remove_control_instructions, run_benchmark, run_one, selected_tasks, synthesize_benchmark, validate_benchmark_inputs
 
 
 class FakeProcess:
@@ -158,6 +158,50 @@ class RunnerVariantTests(unittest.TestCase):
             with patch.dict("os.environ", {}, clear=True), patch("tokenmessung.runner.codex_exec_capabilities", return_value={"supports_json": True, "supports_output_schema": True, "supports_ignore_user_config": True, "supports_ignore_rules": True}):
                 with self.assertRaises(EnvironmentError):
                     validate_benchmark_inputs(fixture, agents_file, 1)
+
+    def test_prepare_generated_dir_refuses_unmarked_nonempty_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            out.mkdir()
+            (out / "user-file.txt").write_text("do not delete\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                prepare_generated_dir(out)
+            self.assertTrue((out / "user-file.txt").exists())
+
+    def test_prepare_generated_dir_replaces_marked_generated_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            out.mkdir()
+            (out / GENERATED_MARKER).write_text("generated\n", encoding="utf-8")
+            (out / "stale").mkdir()
+            prepare_generated_dir(out)
+            self.assertTrue((out / GENERATED_MARKER).exists())
+            self.assertFalse((out / "stale").exists())
+
+    def test_run_benchmark_cleans_marked_results_before_new_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            out = base / "results"
+            out.mkdir()
+            (out / GENERATED_MARKER).write_text("generated\n", encoding="utf-8")
+            stale = out / "old_task__agents__r1" / "meta.json"
+            stale.parent.mkdir()
+            stale.write_text("{}\n", encoding="utf-8")
+            workspace_root = base / "workspaces"
+            fixture = base / "fixture"
+            agents_file = fixture / "AGENTS.md"
+            task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
+
+            def fake_run_one(**kwargs: object) -> None:
+                self.assertFalse(stale.exists())
+                run_dir = Path(kwargs["out"]) / f"{task['id']}__{kwargs['variant']}__r{kwargs['repeat']}"
+                run_dir.mkdir(parents=True, exist_ok=True)
+                (run_dir / "meta.json").write_text("{}\n", encoding="utf-8")
+
+            with patch("tokenmessung.runner.validate_benchmark_inputs"), patch("tokenmessung.runner.audit_subject_source", return_value={"mode": "manual", "file_count": 1, "total_bytes": 1, "warnings": []}), patch("tokenmessung.runner.selected_tasks", return_value=[task]), patch("tokenmessung.runner.run_one", side_effect=fake_run_one), patch("tokenmessung.runner.analyze_results", return_value={"result_json": out / "result.json"}):
+                run_benchmark(fixture, agents_file, "model", 1, out, workspace_root=workspace_root)
+            self.assertTrue((out / GENERATED_MARKER).exists())
+            self.assertTrue((workspace_root / GENERATED_MARKER).exists())
 
     def test_synthesize_benchmark_creates_complete_paired_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

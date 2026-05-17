@@ -161,6 +161,22 @@ class RootRunnerTests(unittest.TestCase):
                     module.main(["--model", "model", "--subject-dir", "tokenmessung-run/subject"])
             self.assertIn("Refusing to place subject/ inside --run-dir", str(ctx.exception))
 
+    def test_refuses_custom_unmarked_nonempty_run_dir(self) -> None:
+        module = load_root_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subject = root / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            custom_run = root / "custom-run"
+            custom_run.mkdir()
+            (custom_run / "user-file.txt").write_text("do not delete\n", encoding="utf-8")
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
+                with self.assertRaises(SystemExit) as ctx:
+                    module.main(["--model", "model", "--run-dir", "custom-run"])
+            self.assertIn("Refusing to replace non-tokenmessung --run-dir", str(ctx.exception))
+            self.assertTrue((custom_run / "user-file.txt").exists())
+
     def test_all_tasks_disables_low_cost_default(self) -> None:
         module = load_root_runner()
 
