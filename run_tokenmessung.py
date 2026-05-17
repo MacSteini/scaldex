@@ -50,7 +50,7 @@ def ensure_api_key() -> str:
 
 def tool_sanity_text() -> str:
     return (
-        "Tool-Sanity: "
+        "Tool sanity: "
         f"schema v{TOOL_SANITY['schema_version']}; "
         f"isolation reporting={'on' if TOOL_SANITY['run_isolation_reporting'] else 'off'}; "
         f"separated warnings={'on' if TOOL_SANITY['separated_warning_sections'] else 'off'}; "
@@ -75,10 +75,10 @@ def reset_run_dir(run_dir: Path, root: Path, subject_dir: Path) -> None:
 def render_progress(event: dict[str, object]) -> None:
     event_name = event.get("event")
     if event_name == "benchmark_start":
-        status(f"Benchmark startet: {event.get('total_runs')} Runs, {event.get('repeats')} Repeat(s), {event.get('task_count')} Tasks.")
+        status(f"Benchmark starting: {event.get('total_runs')} runs, {event.get('repeats')} repeat(s), {event.get('task_count')} task(s).")
     elif event_name == "run_start":
         status(
-            "Run {run_order}/{total_runs} startet: {task_id} [{variant}] Repeat {repeat}.".format(
+            "Run {run_order}/{total_runs} starting: {task_id} [{variant}] repeat {repeat}.".format(
                 run_order=event.get("run_order"),
                 total_runs=event.get("total_runs"),
                 task_id=event.get("task_id"),
@@ -87,12 +87,12 @@ def render_progress(event: dict[str, object]) -> None:
             )
         )
     elif event_name == "run_heartbeat":
-        status(f"Run {event.get('run_id')} läuft seit {event.get('elapsed_seconds')}s.")
+        status(f"Run {event.get('run_id')} has been running for {event.get('elapsed_seconds')}s.")
     elif event_name == "run_timeout":
-        status(f"Run {event.get('run_id')} nach {event.get('max_run_seconds')}s beendet.")
+        status(f"Run {event.get('run_id')} stopped after {event.get('max_run_seconds')}s.")
     elif event_name == "run_done":
         status(
-            "Run {run_order}/{total_runs} fertig: {task_id} [{variant}], Exit {exit_code}, {wall_seconds}s.".format(
+            "Run {run_order}/{total_runs} complete: {task_id} [{variant}], exit {exit_code}, {wall_seconds}s.".format(
                 run_order=event.get("run_order"),
                 total_runs=event.get("total_runs"),
                 task_id=event.get("task_id"),
@@ -102,9 +102,9 @@ def render_progress(event: dict[str, object]) -> None:
             )
         )
     elif event_name == "analysis_start":
-        status("Analyse startet.")
+        status("Analysis starting.")
     elif event_name == "analysis_done":
-        status("Analyse fertig.")
+        status("Analysis complete.")
 
 
 def format_delta(value: object) -> str:
@@ -128,7 +128,7 @@ def print_result(result: dict[str, object]) -> None:
     integrity = result.get("integrity", {})
     percent = primary.get("percent") if isinstance(primary, dict) else None
     percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
-    print("\n=== Tokenmessung Ergebnis ===")
+    print("\n=== Tokenmessung Result ===")
     print(f"Verdict: {result.get('verdict', 'unknown')}")
     isolation = result.get("isolation", {})
     if isinstance(isolation, dict):
@@ -188,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     subject_dir = (root / args.subject_dir).resolve()
     if not (subject_dir / "AGENTS.md").is_file():
         raise SystemExit(f"Missing required file: {subject_dir / 'AGENTS.md'}")
-    status(f"Subject geprüft: {subject_dir}")
+    status(f"Subject checked: {subject_dir}")
     agents_file = None
     agents_dir = None
     if args.subject_mode == "package":
@@ -198,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     subject_audit = audit_subject_source(agents_file, agents_dir, subject_mode=args.subject_mode)
     batch_id = new_batch_id()
     status(
-        "Subject-Audit: {mode}, {files} Datei(en), Größe {size}.".format(
+        "Subject audit: {mode}, {files} file(s), size {size}.".format(
             mode=subject_audit["mode"],
             files=subject_audit["file_count"],
             size=f"{human_bytes(subject_audit['total_bytes'])} ({subject_audit['total_bytes']} bytes)",
@@ -207,10 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     largest_files = subject_audit.get("largest_files", [])
     if largest_files:
         top = ", ".join(f"{item['path']} ({human_bytes(item['bytes'])}, {item['bytes']} bytes)" for item in largest_files[:3])
-        status(f"Größte Subject-Dateien: {top}.")
+        status(f"Largest subject files: {top}.")
     warnings = subject_audit.get("warnings", [])
     if warnings:
-        status("Subject-Warnungen:")
+        status("Subject warnings:")
         for warning in warnings:
             status(f"- {warning}: {explain_warning(str(warning))}")
 
@@ -223,23 +223,23 @@ def main(argv: list[str] | None = None) -> int:
     planned_task_count = len(TASKS) if task_ids is None else len(task_ids)
     planned_runs = args.repeats * planned_task_count * 2
     status(tool_sanity_text())
-    status(f"Batch-ID: {batch_id}")
-    status(f"Subject-Fingerprint: {subject_audit.get('fingerprint', 'n/a')}")
-    status(f"Geplante bezahlte Codex-Runs: {planned_runs} ({planned_task_count} Task(s) × {args.repeats} Repeat(s) × 2 Varianten).")
+    status(f"Batch ID: {batch_id}")
+    status(f"Subject fingerprint: {subject_audit.get('fingerprint', 'n/a')}")
+    status(f"Planned paid Codex runs: {planned_runs} ({planned_task_count} task(s) x {args.repeats} repeat(s) x 2 variants).")
 
     key_source = ensure_api_key()
-    status("API-Key aus Umgebung erkannt." if key_source == "env" else "API-Key lokal eingegeben.")
-    status("Run-Isolation: eigenes CODEX_HOME pro Run; ~/.codex wird nicht als Instruction-Quelle gemessen.")
+    status("API key detected in environment." if key_source == "env" else "API key entered locally.")
+    status("Run isolation: dedicated CODEX_HOME per run; ~/.codex is not measured as an instruction source.")
     if run_dir.exists():
-        status(f"Vorheriger Run-Ordner wird ersetzt: {run_dir}")
+        status(f"Replacing previous run folder: {run_dir}")
     reset_run_dir(run_dir, root, subject_dir)
     if task_ids is None:
-        status("Task-Auswahl: alle Tasks.")
+        status("Task selection: all tasks.")
     else:
-        status(f"Task-Auswahl: {', '.join(task_ids)}.")
-    status(f"Fixture wird erstellt: {fixture_dir}")
+        status(f"Task selection: {', '.join(task_ids)}.")
+    status(f"Creating fixture: {fixture_dir}")
     create_fixture(fixture_dir, force=True)
-    status(f"Fixture fertig. Geplante Runs: {planned_runs}")
+    status(f"Fixture ready. Planned runs: {planned_runs}")
     started = time.monotonic()
     outputs = run_benchmark(
         fixture_dir,
@@ -272,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     result["artifacts"]["raw_dir"] = str(raw_dir)
     outputs["result_json"].write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    status(f"Report fertig nach {round(time.monotonic() - started, 1)}s: {outputs['result_md']}")
+    status(f"Report ready after {round(time.monotonic() - started, 1)}s: {outputs['result_md']}")
     print_result(result)
     return 0
 
