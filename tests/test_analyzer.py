@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tokenmessung.analyzer import analyze_results, build_result, human_bytes, paired_deltas, parse_run
+from tokenmessung.analyzer import analyze_results, build_result, decision_summary, human_bytes, paired_deltas, parse_run
 
 
 def write_run(
@@ -144,6 +144,9 @@ class AnalyzerTests(unittest.TestCase):
             self.assertNotIn("large_subject", result["benchmark_warnings"])
             self.assertEqual(result["reliability"]["level"], "low")
             self.assertIn("low_sample_size", result["reliability"]["warnings"])
+            self.assertEqual(result["decision"]["next_action"], "eligible_for_decision_run")
+            self.assertTrue(result["decision"]["quality_gate_passed"])
+            self.assertFalse(result["decision"]["uses_unpaired_variant_medians_for_decision"])
             self.assertEqual(result["tool_sanity"]["schema_version"], 1)
             self.assertTrue(result["tool_sanity"]["aggregated_command_output_counted"])
             self.assertTrue(result["final_relevant_files"]["repo_relative_only"])
@@ -182,6 +185,7 @@ class AnalyzerTests(unittest.TestCase):
             paths = analyze_results(base)
             result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
             self.assertEqual(result["verdict"], "not_effective")
+            self.assertEqual(result["decision"]["next_action"], "stop_fix_quality_or_task_behavior")
             self.assertFalse(result["final_relevant_files"]["repo_relative_only"])
             self.assertIn("/tmp/repo/services/auth/src/login.ts", result["final_relevant_files"]["non_repo_relative_paths"])
             self.assertIn("/tmp/repo/services/auth/src/login.ts", result["final_relevant_files"]["raw_non_repo_relative_paths"])
@@ -220,6 +224,7 @@ class AnalyzerTests(unittest.TestCase):
             paths = analyze_results(base)
             result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
             self.assertEqual(result["verdict"], "not_effective")
+            self.assertEqual(result["decision"]["next_action"], "stop_fix_quality_or_task_behavior")
             self.assertIn("missing_expected_relevant_files", result["benchmark_warnings"])
             self.assertIn("services/auth/src/login.ts", result["final_relevant_files"]["missing_expected_paths"])
 
@@ -342,6 +347,7 @@ class AnalyzerTests(unittest.TestCase):
         result = build_result(summary, [{"task_id": "x"}, {"task_id": "x"}, {"task_id": "x"}], [{"task_id": "t", "repeat": 1}])
         self.assertEqual(result["reliability"]["level"], "normal")
         self.assertEqual(result["reliability"]["warnings"], [])
+        self.assertEqual(result["decision"]["next_action"], "record_decision_grade_win")
 
     def test_build_result_reports_not_effective_when_primary_metric_regresses(self) -> None:
         summary = {
@@ -357,6 +363,26 @@ class AnalyzerTests(unittest.TestCase):
         }
         result = build_result(summary, [{"task_id": "x"}], [{"task_id": "t", "repeat": 1}])
         self.assertEqual(result["verdict"], "not_effective")
+
+    def test_decision_summary_reports_do_not_claim_for_decision_grade_failure(self) -> None:
+        result = {
+            "verdict": "not_effective",
+            "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+            "benchmark_warnings": [],
+            "final_relevant_files": {"normalized_repo_relative_only": True},
+            "reliability": {"paired_runs": 3},
+        }
+        self.assertEqual(decision_summary(result)["next_action"], "do_not_claim_efficiency")
+
+    def test_decision_summary_reports_stop_for_smoke_quality_failure(self) -> None:
+        result = {
+            "verdict": "effective",
+            "quality": {"agents_success_rate": 0.5, "control_success_rate": 1.0},
+            "benchmark_warnings": [],
+            "final_relevant_files": {"normalized_repo_relative_only": True},
+            "reliability": {"paired_runs": 1},
+        }
+        self.assertEqual(decision_summary(result)["next_action"], "stop_fix_quality_or_task_behavior")
 
     def test_human_bytes_formats_sizes(self) -> None:
         self.assertEqual(human_bytes(999), "999 B")

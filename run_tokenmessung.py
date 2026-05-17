@@ -14,7 +14,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
 from tokenmessung.fixture import create_fixture  # noqa: E402
-from tokenmessung.analyzer import TOOL_SANITY, explain_warning, human_bytes  # noqa: E402
+from tokenmessung.analyzer import TOOL_SANITY, decision_summary, explain_warning, human_bytes  # noqa: E402
 from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, new_batch_id, run_benchmark  # noqa: E402
 from tokenmessung.schemas import TASKS  # noqa: E402
 
@@ -127,6 +127,9 @@ def print_result(result: dict[str, object]) -> None:
     reliability = result.get("reliability", {})
     tool_sanity = result.get("tool_sanity", {})
     integrity = result.get("integrity", {})
+    decision = result.get("decision", {})
+    if not isinstance(decision, dict) or not decision:
+        decision = decision_summary(result)
     percent = primary.get("percent") if isinstance(primary, dict) else None
     percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
     print("\n=== Tokenmessung Result ===")
@@ -159,6 +162,7 @@ def print_result(result: dict[str, object]) -> None:
         print(f"Reliability: {level} ({paired_runs} paired run(s))")
         for warning in reliability.get("warnings", []):
             print(f"- {warning}: {explain_warning(str(warning))}")
+    print(f"Next action: {decision.get('next_action', 'unknown')}")
     if isinstance(tool_sanity, dict):
         print(
             "Tool sanity: schema v{schema}; isolation reporting={isolation}; separated warnings={warnings}; aggregated output={output}".format(

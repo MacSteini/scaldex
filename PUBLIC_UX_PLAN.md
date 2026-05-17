@@ -20,8 +20,8 @@
 | Step | Status | Goal | Success Measurement | Audit |
 | --- | --- | --- | --- | --- |
 | 0 | done | Create this root plan. | `PUBLIC_UX_PLAN.md` exists and lists all steps. | No secrets, no private benchmark artefacts, no measurement logic changes. |
-| 1 | in_progress | Add console `Next action`. | Console says whether to stop, run decision-grade, record win, or reject efficiency. | Tests cover all action categories; decisions do not use unpaired medians. |
-| 2 | pending | Add `RESULT.md` Decision Summary. | First report lines show decision, next action, quality gate, warnings, and claim status. | Benchmark and subject warnings remain separated; integrity failures stay not effective. |
+| 1 | done | Add console `Next action`. | Console says whether to stop, run decision-grade, record win, or reject efficiency. | Tests cover all action categories; decisions do not use unpaired medians. |
+| 2 | in_progress | Add `RESULT.md` Decision Summary. | First report lines show decision, next action, quality gate, warnings, and claim status. | Benchmark and subject warnings remain separated; integrity failures stay not effective. |
 | 3 | pending | Add local multi-task summary. | Existing `result.json` files can produce `TOKENMESSUNG_SUMMARY.md` and `tokenmessung-summary.json` without API calls. | Mixed fingerprints and mixed smoke/decision-grade inputs are explicit. |
 | 4 | pending | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior and stop rules. | No auto-run implementation or paid-run trigger added. |
 | 5 | pending | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behavior. |
@@ -49,6 +49,21 @@
   - No API keys, local secrets, or raw benchmark artefacts were added.
 
 ### Step 1
+
+- Status: done
+- Measurement:
+  - `result.json` now includes an additive `decision` object.
+  - Console output now includes `Next action`.
+  - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
+  - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-synth-clean --repeats 2 --seed 1` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-synth-clean` passed.
+- Audit:
+  - Unit tests cover `eligible_for_decision_run`, `stop_fix_quality_or_task_behavior`, `record_decision_grade_win`, and `do_not_claim_efficiency`.
+  - Decision logic records `uses_unpaired_variant_medians_for_decision: false`.
+  - Existing verdict and paired primary metric logic remain unchanged.
+
+### Step 2
 
 - Status: in_progress
 - Measurement:

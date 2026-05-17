@@ -143,6 +143,7 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Batch: batch-test", output.getvalue())
             self.assertIn("Subject fingerprint: subject-test", output.getvalue())
             self.assertIn("Reliability: low (1 paired run(s))", output.getvalue())
+            self.assertIn("Next action:", output.getvalue())
             self.assertIn("Tool sanity: schema v1", output.getvalue())
             self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())
             self.assertNotIn("large_subject: The tested subject package is larger than 32 KiB", output.getvalue())

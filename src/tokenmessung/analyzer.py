@@ -577,6 +577,41 @@ def has_integrity_warnings(warnings: list[str]) -> bool:
     return any(any(warning.startswith(prefix) for prefix in INTEGRITY_WARNING_PREFIXES) for warning in warnings)
 
 
+def quality_gate_passed(result: dict[str, Any]) -> bool:
+    quality = result.get("quality", {})
+    final_relevant = result.get("final_relevant_files", {})
+    benchmark_warnings = result.get("benchmark_warnings", [])
+    return (
+        isinstance(quality, dict)
+        and number(quality.get("agents_success_rate")) == 1.0
+        and number(quality.get("control_success_rate")) == 1.0
+        and not benchmark_warnings
+        and isinstance(final_relevant, dict)
+        and bool(final_relevant.get("normalized_repo_relative_only"))
+    )
+
+
+def decision_grade(result: dict[str, Any]) -> bool:
+    reliability = result.get("reliability", {})
+    return isinstance(reliability, dict) and number(reliability.get("paired_runs")) >= 3
+
+
+def decision_summary(result: dict[str, Any]) -> dict[str, Any]:
+    quality_ok = quality_gate_passed(result)
+    is_decision_grade = decision_grade(result)
+    if is_decision_grade:
+        next_action = "record_decision_grade_win" if result.get("verdict") == "effective" and quality_ok else "do_not_claim_efficiency"
+    else:
+        next_action = "eligible_for_decision_run" if quality_ok else "stop_fix_quality_or_task_behavior"
+    return {
+        "next_action": next_action,
+        "quality_gate_passed": quality_ok,
+        "decision_grade": is_decision_grade,
+        "primary_metric_basis": "paired_median_non_cached_input_delta",
+        "uses_unpaired_variant_medians_for_decision": False,
+    }
+
+
 def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
     warnings = list(summary.get("analysis_warnings", []))
     control_non_cached = variant_median(summary, "control", "non_cached_input_tokens")
@@ -671,7 +706,7 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             readable["size"] = human_bytes(readable.get("bytes", 0))
             readable_largest_files.append(readable)
 
-    return {
+    result = {
         "verdict": verdict,
         "primary_metric": "non_cached_input_tokens",
         "primary_delta": {
@@ -750,6 +785,8 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "largest_files": readable_largest_files,
         },
     }
+    result["decision"] = decision_summary(result)
+    return result
 
 
 def format_number(value: Any) -> str:
