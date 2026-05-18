@@ -35,8 +35,11 @@ Give that file to Codex when you want help interpreting the measurement, decidin
 - `What this means`: explains the result in plain language.
 - `What to do now`: tells you whether to hand the result to Codex, stop, run `--repeats 3`, keep the report, or avoid an efficiency claim.
 - `Codex handoff`: shows the file to send to Codex and summarizes its purpose and safety boundary.
-- `Paired median non-cached input delta`: primary token metric.
-- `Quality`: both agents and control need to be `1.0 / 1.0` for clean evidence.
+- `What was compared`: explains `agents` and `control` directly in the terminal.
+- `Evidence`: explains the primary token metric, quality gate, and reliability in sentences.
+- `Audit checks`: explains isolation, path integrity, tool sanity, and warnings in sentences.
+
+In Tokenmessung output, `agents` means the run with your measured `AGENTS.md`/`.codex` package installed. `control` means the same task run without that package.
 
 ## Use The Report Files
 

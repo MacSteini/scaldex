@@ -219,6 +219,19 @@
   - Quality blockers remain blockers even when token deltas look good.
   - Variant medians remain secondary context and are not used as the decision metric.
 
+### Step 12
+
+- Status: done
+- Measurement:
+  - Console output now uses readable sections: `Result`, `Next step`, `Codex handoff`, `What was compared`, `Evidence`, `Audit checks`, and `Report files`.
+  - The terminal explains `agents` and `control` directly before their metrics appear.
+  - Token delta, quality, fingerprints, isolation, path integrity, reliability, and tool sanity now render as explanatory sentences instead of raw key-value rows.
+  - `RESULT.md` includes a glossary for `agents`, `control`, `paired delta`, `fingerprint`, and normalized repo-relative `relevant_files`.
+- Audit:
+  - `result.json`, verdict rules, history behaviour, and `CODEX_HANDOFF.md` contract remain unchanged.
+  - The terminal remains for human understanding; Codex action remains delegated through `CODEX_HANDOFF.md`.
+  - Technical fields still exist in machine-readable artefacts for automation and audits.
+
 ## Future Smart Runner Specification
 
 - Status: done.

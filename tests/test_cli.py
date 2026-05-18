@@ -195,6 +195,7 @@ class CliTests(unittest.TestCase):
             code, text = self.run_cli_text(["result", "show", str(result)])
             self.assertEqual(code, 0)
             self.assertIn("=== Tokenmessung Result ===", text)
+            self.assertIn("Result\n", text)
             self.assertIn("Verdict: effective", text)
             self.assertIn("What this means:", text)
             self.assertIn("What to do now:", text)
@@ -202,6 +203,15 @@ class CliTests(unittest.TestCase):
             self.assertIn("- File to send:", text)
             self.assertIn("- Purpose:", text)
             self.assertIn("- Boundary:", text)
+            self.assertIn("What was compared", text)
+            self.assertIn("agents means the run with your measured AGENTS.md/.codex package installed.", text)
+            self.assertIn("control means the same task run without that package.", text)
+            self.assertIn("Primary metric: agents used 10 fewer non-cached input tokens than control (-10.0%).", text)
+            self.assertIn("Secondary context only: agents median 90, control median 100; this is not the decision metric.", text)
+            self.assertIn("Both sides completed successfully: agents 1.0, control 1.0.", text)
+            self.assertIn("This run excluded your global ~/.codex config, so the subject package was measured in isolation.", text)
+            self.assertIn("Report identity: batch batch-test; subject fingerprint subject-test; run config fingerprint config-test.", text)
+            self.assertIn("Path integrity: final relevant files normalize to repo-relative paths, so Codex can compare reports safely.", text)
 
     def test_result_show_prints_human_next_steps_for_all_actions(self) -> None:
         cases = [
