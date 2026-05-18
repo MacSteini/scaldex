@@ -15,14 +15,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
 from tokenmessung.fixture import create_fixture  # noqa: E402
-from tokenmessung.analyzer import TOOL_SANITY, decision_summary, explain_warning, human_bytes  # noqa: E402
+from tokenmessung.analyzer import TOOL_SANITY, explain_warning, human_bytes  # noqa: E402
+from tokenmessung.result_console import load_result_json, print_result  # noqa: E402
 from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, new_batch_id, run_benchmark  # noqa: E402
 from tokenmessung.schemas import TASKS  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run a local Codex AGENTS token benchmark.")
-    parser.add_argument("--model", required=True)
+    parser.add_argument("--model")
     parser.add_argument("--subject-dir", type=Path, default=Path("subject"))
     parser.add_argument("--run-dir", type=Path, default=Path("tokenmessung-run"))
     parser.add_argument("--repeats", type=int, default=1)
@@ -34,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--subject-mode", choices=("package", "agents-md"), default="package")
     parser.add_argument("--history-dir", type=Path, default=Path("tokenmessung-history"))
     parser.add_argument("--no-archive-previous-result", action="store_true")
+    parser.add_argument("--print-result", type=Path, help="Print an existing result.json without running Codex.")
     return parser
 
 
@@ -119,6 +121,20 @@ def archive_previous_result(run_dir: Path, history_dir: Path) -> Path | None:
     return archive_dir
 
 
+def history_compare_command(root: Path, run_dir: Path, history_dir: Path) -> str | None:
+    if not history_dir.exists():
+        return None
+    try:
+        history_text = str(history_dir.relative_to(root))
+    except ValueError:
+        history_text = str(history_dir)
+    try:
+        run_text = str(run_dir.relative_to(root))
+    except ValueError:
+        run_text = str(run_dir)
+    return f"tokenmessung bench summarize {history_text} {run_text} --out tokenmessung-summary"
+
+
 def render_progress(event: dict[str, object]) -> None:
     event_name = event.get("event")
     if event_name == "benchmark_start":
@@ -154,93 +170,20 @@ def render_progress(event: dict[str, object]) -> None:
         status("Analysis complete.")
 
 
-def format_delta(value: object) -> str:
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return "n/a"
-    if numeric.is_integer():
-        return f"{int(numeric):,}"
-    return f"{numeric:,.1f}"
-
-
-def print_result(result: dict[str, object]) -> None:
-    primary = result.get("primary_delta", {})
-    quality = result.get("quality", {})
-    benchmark_warnings = result.get("benchmark_warnings", result.get("warnings", []))
-    artifacts = result.get("artifacts", {})
-    subject = result.get("subject", {})
-    final_relevant = result.get("final_relevant_files", {})
-    reliability = result.get("reliability", {})
-    tool_sanity = result.get("tool_sanity", {})
-    integrity = result.get("integrity", {})
-    decision = result.get("decision", {})
-    if not isinstance(decision, dict) or not decision:
-        decision = decision_summary(result)
-    percent = primary.get("percent") if isinstance(primary, dict) else None
-    percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
-    print("\n=== Tokenmessung Result ===")
-    print(f"Verdict: {result.get('verdict', 'unknown')}")
-    isolation = result.get("isolation", {})
-    if isinstance(isolation, dict):
-        print(f"Isolation: ~/.codex excluded = {isolation.get('home_codex_excluded', False)}")
-    if isinstance(subject, dict):
-        print(f"Subject: {subject.get('mode', 'n/a')} / {format_delta(subject.get('source_file_count'))} files / {human_bytes(subject.get('total_bytes'))} ({format_delta(subject.get('total_bytes'))} bytes)")
-    if isinstance(integrity, dict):
-        print(f"Batch: {integrity.get('batch_id', 'n/a')}")
-        print(f"Subject fingerprint: {integrity.get('subject_fingerprint', 'n/a')}")
-        print(f"Run config fingerprint: {integrity.get('run_config_fingerprint', 'n/a')}")
-    if isinstance(primary, dict):
-        print(f"Paired median non-cached input delta: {format_delta(primary.get('agents_minus_control'))} ({percent_text})")
-        print(
-            "Variant medians: agents {agents} / control {control}".format(
-                agents=format_delta(primary.get("agents_median")),
-                control=format_delta(primary.get("control_median")),
-            )
-        )
-    if isinstance(quality, dict):
-        print(f"Quality: agents {quality.get('agents_success_rate', 'n/a')} / control {quality.get('control_success_rate', 'n/a')}")
-    if isinstance(final_relevant, dict):
-        print(f"Repo-relative relevant_files only: {final_relevant.get('repo_relative_only', False)}")
-        print(f"Normalized repo-relative relevant_files only: {final_relevant.get('normalized_repo_relative_only', False)}")
-    if isinstance(reliability, dict):
-        paired_runs = reliability.get("paired_runs", "n/a")
-        level = reliability.get("level", "n/a")
-        print(f"Reliability: {level} ({paired_runs} paired run(s))")
-        for warning in reliability.get("warnings", []):
-            print(f"- {warning}: {explain_warning(str(warning))}")
-    print(f"Next action: {decision.get('next_action', 'unknown')}")
-    print(f"Decision reason: {decision.get('reason', 'unknown')}")
-    print(f"Decision explanation: {decision.get('explanation', 'unknown')}")
-    if isinstance(tool_sanity, dict):
-        print(
-            "Tool sanity: schema v{schema}; isolation reporting={isolation}; separated warnings={warnings}; aggregated output={output}".format(
-                schema=tool_sanity.get("schema_version", "n/a"),
-                isolation=tool_sanity.get("run_isolation_reporting", False),
-                warnings=tool_sanity.get("separated_warning_sections", False),
-                output=tool_sanity.get("aggregated_command_output_counted", False),
-            )
-        )
-    if benchmark_warnings:
-        print("Benchmark warnings:")
-        for warning in benchmark_warnings:
-            print(f"- {warning}: {explain_warning(str(warning))}")
-    else:
-        print("Benchmark warnings: none")
-    if isinstance(subject, dict):
-        subject_warnings = subject.get("warnings", [])
-        if subject_warnings:
-            print(f"Subject notes: {len(subject_warnings)} note(s); see RESULT.md for details.")
-    if isinstance(artifacts, dict):
-        print(f"Human report: {artifacts.get('result_md')}")
-        print(f"Machine report: {artifacts.get('result_json')}")
-        if artifacts.get("codex_handoff_md"):
-            print(f"Codex handoff: {artifacts.get('codex_handoff_md')}")
-    print()
-
-
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.print_result is not None:
+        if args.model or args.task_ids or args.all_tasks:
+            raise SystemExit("Use --print-result by itself; it does not run benchmarks.")
+        root = Path.cwd().resolve()
+        result_path = (root / args.print_result).resolve() if not args.print_result.is_absolute() else args.print_result.resolve()
+        result = load_result_json(result_path)
+        run_dir = result_path.parent
+        history_dir = (root / args.history_dir).resolve()
+        print_result(result, compare_history_command=history_compare_command(root, run_dir, history_dir))
+        return 0
+    if not args.model:
+        raise SystemExit("--model is required unless --print-result is used.")
     if args.all_tasks and args.task_ids:
         raise SystemExit("Use either --all-tasks or --task-id, not both.")
     root = Path.cwd().resolve()
@@ -291,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     key_source = ensure_api_key()
     status("API key detected in environment." if key_source == "env" else "API key entered locally.")
     status("Run isolation: dedicated CODEX_HOME per run; ~/.codex is not measured as an instruction source.")
+    archived = None
     if run_dir.exists():
         if not args.no_archive_previous_result:
             archived = archive_previous_result(run_dir, history_dir)
@@ -338,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     result["artifacts"]["raw_dir"] = str(raw_dir)
     outputs["result_json"].write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     status(f"Report ready after {round(time.monotonic() - started, 1)}s: {outputs['result_md']}")
-    print_result(result)
+    print_result(result, compare_history_command=history_compare_command(root, run_dir, history_dir) if archived is not None else None)
     return 0
 
 

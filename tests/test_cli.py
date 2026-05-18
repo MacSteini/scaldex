@@ -18,6 +18,12 @@ class CliTests(unittest.TestCase):
             code = main(argv)
         return code, json.loads(output.getvalue())
 
+    def run_cli_text(self, argv: list[str]) -> tuple[int, str]:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = main(argv)
+        return code, output.getvalue()
+
     def test_doctor_default_does_not_require_api_key(self) -> None:
         checks = {
             "git": True,
@@ -116,6 +122,34 @@ class CliTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertTrue(Path(payload["summary_json"]).exists())
             self.assertTrue(Path(payload["summary_md"]).exists())
+
+    def test_result_show_prints_existing_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            result = base / "result.json"
+            result.write_text(
+                json.dumps(
+                    {
+                        "verdict": "effective",
+                        "primary_delta": {"agents_minus_control": -10, "percent": -10.0, "agents_median": 90, "control_median": 100},
+                        "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+                        "benchmark_warnings": [],
+                        "final_relevant_files": {"normalized_repo_relative_only": True},
+                        "reliability": {"level": "low", "paired_runs": 1, "warnings": ["low_sample_size"]},
+                        "subject": {"mode": "package", "source_file_count": 1, "total_bytes": 9, "warnings": []},
+                        "isolation": {"home_codex_excluded": True},
+                        "integrity": {"batch_id": "batch-test", "subject_fingerprint": "subject-test", "run_config_fingerprint": "config-test"},
+                        "artifacts": {"result_json": str(result), "result_md": str(base / "RESULT.md"), "codex_handoff_md": str(base / "CODEX_HANDOFF.md")},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            code, text = self.run_cli_text(["result", "show", str(result)])
+            self.assertEqual(code, 0)
+            self.assertIn("=== Tokenmessung Result ===", text)
+            self.assertIn("Verdict: effective", text)
+            self.assertIn("Decision explanation:", text)
+            self.assertIn("Codex handoff:", text)
 
 
 if __name__ == "__main__":

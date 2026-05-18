@@ -14,6 +14,7 @@
 - Existing result files from multiple runs can be summarized locally without new API calls.
 - Each result includes a Codex-ready handoff brief so users can feed the measurement into a follow-up agent.
 - Each decision explains what happened, why it matters, and what the next action should be.
+- Existing `result.json` files can be replayed as console decisions without new paid runs.
 - Re-running the default root runner preserves compact previous reports for later summaries.
 - A future smart runner is specified but not implemented.
 - Public README/end-user documentation remains last.
@@ -31,6 +32,7 @@
 | 6 | done | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behaviour and stop rules. | No auto-run implementation or paid-run trigger added. |
 | 7 | done | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behaviour. |
 | 8 | done | Add human-readable decision storyline. | Console, `RESULT.md`, `result.json`, and `CODEX_HANDOFF.md` explain the decision in plain language. | No verdict or benchmark math changes; fresh-agent handoff remains non-automatic. |
+| 9 | done | Add result replay for end users. | Existing `result.json` files can be shown via `run_tokenmessung.py --print-result` and `tokenmessung result show`. | No API key, subject audit, run reset, or paid benchmark occurs in replay mode. |
 
 ## Verification After Each Step
 
@@ -171,6 +173,27 @@
   - Verdict, quality gate, and paired primary metric logic remain unchanged.
   - Handoff remains advisory and does not start paid runs.
   - Fresh-agent handoff tells the reader not to use variant medians as the decision metric.
+
+### Step 9
+
+- Status: done
+- Measurement:
+  - Added `run_tokenmessung.py --print-result RESULT_JSON`.
+  - Added `tokenmessung result show RESULT_JSON`.
+  - Console rendering now lives in reusable result-console code shared by real runs and replay.
+  - Replay prints the same `=== Tokenmessung Result ===` decision view as a real run.
+  - Replay requires no model, no API key, no subject directory, no fixture, and no run folder reset.
+  - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
+  - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-replay-probe --repeats 2 --seed 1` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-replay-probe` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench summarize /private/tmp/tokenmessung-replay-probe --out /private/tmp/tokenmessung-replay-summary` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung result show /private/tmp/tokenmessung-replay-probe/result.json` passed.
+  - `python3 run_tokenmessung.py --print-result /private/tmp/tokenmessung-replay-probe/result.json` passed.
+- Audit:
+  - Measurement math, verdicts, quality gates, and history archive structure remain unchanged.
+  - Replay is read-only for existing run and history files.
+  - Mixed replay/benchmark mode is rejected to avoid accidental paid-run expectations.
 
 ## Future Smart Runner Specification
 

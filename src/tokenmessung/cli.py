@@ -7,6 +7,7 @@ from pathlib import Path
 from .analyzer import analyze_results
 from .fixture import create_fixture
 from .multisummary import summarize_results
+from .result_console import load_result_json, print_result
 from .runner import doctor, run_benchmark, synthesize_benchmark
 
 
@@ -50,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor_parser = bench_subparsers.add_parser("doctor")
     doctor_parser.add_argument("--require-api-key", action="store_true")
+
+    result_parser = subparsers.add_parser("result")
+    result_subparsers = result_parser.add_subparsers(dest="result_command", required=True)
+    result_show = result_subparsers.add_parser("show")
+    result_show.add_argument("result_json", type=Path)
     return parser
 
 
@@ -93,5 +99,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.require_api_key:
             required.append("codex_api_key_present")
         return 0 if all(checks.get(key) for key in required) else 1
+    if args.command == "result" and args.result_command == "show":
+        print_result(load_result_json(args.result_json))
+        return 0
     parser.error("Unhandled command")
     return 2
