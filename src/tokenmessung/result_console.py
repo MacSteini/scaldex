@@ -237,7 +237,7 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     print()
     print("What was compared")
     print("agents means the run with your measured AGENTS.md/.codex package installed.")
-    print("control means the same task run without that package.")
+    print("control means the same task run without that package and without your global ~/.codex config.")
     isolation = result.get("isolation", {})
     if isinstance(subject, dict):
         print(subject_sentence(subject))

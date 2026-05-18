@@ -219,7 +219,7 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("- Boundary:", output.getvalue())
             self.assertIn("What was compared", output.getvalue())
             self.assertIn("agents means the run with your measured AGENTS.md/.codex package installed.", output.getvalue())
-            self.assertIn("control means the same task run without that package.", output.getvalue())
+            self.assertIn("control means the same task run without that package and without your global ~/.codex config.", output.getvalue())
             self.assertIn("Internal report structure is complete: schema v1, isolation reported, warnings separated, command output counted.", output.getvalue())
             self.assertIn("Codex handoff:", output.getvalue())
             self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())
