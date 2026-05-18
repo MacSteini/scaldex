@@ -246,16 +246,66 @@ def next_summary_action(summary: dict[str, Any]) -> str:
     return "Do not claim global efficiency yet; collect the missing decision-grade task reports or fix failed tasks first."
 
 
+def yes_no(value: Any) -> str:
+    return "yes" if bool(value) else "no"
+
+
+def report_type_text(summary: dict[str, Any]) -> str:
+    return "DEMO DATA ONLY (synthetic results)" if "synthetic_results_only" in summary.get("warnings", []) else "real benchmark reports"
+
+
+def format_multi_summary_console(summary: dict[str, Any], paths: dict[str, Path] | None = None) -> str:
+    lines = [
+        "",
+        "=== Tokenmessung Summary ===",
+        f"Report type: {report_type_text(summary)}",
+        f"Can claim global efficiency: {yes_no(summary['global_token_efficiency_claim_allowed'])}",
+        f"Decision: {summary['global_decision']}",
+        f"Why: {plain_global_explanation(summary)}",
+        f"Next step: {next_summary_action(summary)}",
+        "",
+        "Evidence:",
+        f"- Effective decision-grade tasks: {summary['effective_decision_grade_task_count']}/{GLOBAL_TASK_THRESHOLD} needed",
+        f"- Decision-grade tasks observed: {summary['decision_grade_task_count']}/{summary['expected_task_count']} expected",
+    ]
+    warnings = summary.get("warnings", [])
+    lines.append(f"- Warnings: {', '.join(str(warning) for warning in warnings) if warnings else 'none'}")
+    if paths:
+        lines.extend(
+            [
+                "",
+                f"Human summary: {paths['summary_md']}",
+                f"Machine summary: {paths['summary_json']}",
+            ]
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
     synthetic = "synthetic_results_only" in summary.get("warnings", [])
     lines = [
         "# Tokenmessung Multi-Task Summary",
         "",
+        f"Status: **{report_type_text(summary)}**",
+        "",
+        f"Can claim global efficiency: **{yes_no(summary['global_token_efficiency_claim_allowed'])}**",
+        "",
+        f"Why: {plain_global_explanation(summary)}",
+        "",
+        f"Next step: {next_summary_action(summary)}",
+        "",
         "## What This Is",
         "",
         "This report combines existing `result.json` files. It does not run Codex and does not spend API money.",
         "",
-        "Synthetic demo data is useful for checking the report layout only." if synthetic else "Use this summary to decide whether several task reports support a broader efficiency claim.",
+        (
+            "This report uses synthetic demo data. It does not measure your `AGENTS.md`, your `.codex/` package, or any real Codex run."
+            if synthetic
+            else "Use this summary to decide whether several task reports support a broader efficiency claim."
+        ),
+        "",
+        "Do not use synthetic demo data as efficiency evidence." if synthetic else "Use the decision below as release evidence only when the quality gates pass.",
         "",
         "## Decision",
         "",

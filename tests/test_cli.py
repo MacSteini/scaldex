@@ -118,10 +118,39 @@ class CliTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            code, payload = self.run_cli(["bench", "summarize", str(base), "--out", str(out)])
+            code, payload = self.run_cli(["bench", "summarize", str(base), "--out", str(out), "--json"])
             self.assertEqual(code, 0)
             self.assertTrue(Path(payload["summary_json"]).exists())
             self.assertTrue(Path(payload["summary_md"]).exists())
+
+    def test_bench_summarize_prints_human_summary_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            result = base / "run" / "result.json"
+            out = base / "out"
+            result.parent.mkdir()
+            result.write_text(
+                json.dumps(
+                    {
+                        "verdict": "effective",
+                        "context": {"task_ids": ["login_test_failure"]},
+                        "primary_delta": {"agents_minus_control": -1, "percent": -1.0, "agents_median": 9, "control_median": 10},
+                        "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+                        "benchmark_warnings": [],
+                        "final_relevant_files": {"normalized_repo_relative_only": True},
+                        "reliability": {"paired_runs": 3},
+                        "decision": {"decision_grade": True},
+                        "integrity": {"subject_fingerprint": "subject-a", "run_config_fingerprint": "config-a"},
+                        "subject": {"source_file_count": 1, "total_bytes": 10},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            code, text = self.run_cli_text(["bench", "summarize", str(base), "--out", str(out)])
+            self.assertEqual(code, 0)
+            self.assertIn("=== Tokenmessung Summary ===", text)
+            self.assertIn("Can claim global efficiency:", text)
+            self.assertIn("Human summary:", text)
 
     def test_bench_summarize_missing_input_exits_cleanly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

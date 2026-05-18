@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .analyzer import analyze_results
 from .fixture import create_fixture
-from .multisummary import summarize_results
+from .multisummary import format_multi_summary_console, summarize_results
 from .result_console import load_result_json, print_result
 from .runner import doctor, run_benchmark, synthesize_benchmark
 
@@ -48,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     summarize_parser = bench_subparsers.add_parser("summarize")
     summarize_parser.add_argument("inputs", nargs="+", type=Path)
     summarize_parser.add_argument("--out", required=True, type=Path)
+    summarize_parser.add_argument("--json", action="store_true", help="Print machine-readable output paths instead of the human summary.")
 
     doctor_parser = bench_subparsers.add_parser("doctor")
     doctor_parser.add_argument("--require-api-key", action="store_true")
@@ -93,7 +94,11 @@ def main(argv: list[str] | None = None) -> int:
             paths = summarize_results(args.inputs, args.out)
         except (FileNotFoundError, ValueError) as exc:
             raise SystemExit(f"Cannot summarize results: {exc}") from exc
-        print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
+        if args.json:
+            print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
+        else:
+            summary = json.loads(paths["summary_json"].read_text(encoding="utf-8"))
+            print(format_multi_summary_console(summary, paths))
         return 0
     if args.command == "bench" and args.bench_command == "doctor":
         checks = doctor()

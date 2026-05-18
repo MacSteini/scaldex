@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tokenmessung.multisummary import build_multi_summary, discover_result_jsons, summarize_results
+from tokenmessung.multisummary import build_multi_summary, discover_result_jsons, format_multi_summary_console, summarize_results
 
 
 def write_result(
@@ -165,12 +165,25 @@ class MultiSummaryTests(unittest.TestCase):
             self.assertEqual(payload["tasks"][0]["task_id"], "login_test_failure")
             report = outputs["summary_md"].read_text(encoding="utf-8")
             self.assertIn("# Tokenmessung Multi-Task Summary", report)
+            self.assertIn("Can claim global efficiency:", report)
             self.assertIn("Global decision: **do_not_claim_global_efficiency**", report)
             self.assertIn("Plain explanation:", report)
             self.assertIn("Next action:", report)
             self.assertIn("## Global Blockers", report)
             self.assertIn("decision_grade_tasks_incomplete:1/4", report)
             self.assertIn("login_test_failure", report)
+
+    def test_format_multi_summary_console_explains_synthetic_demo_data(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            result_path = base / "run" / "result.json"
+            write_multi_task_result(result_path, ["login_test_failure"], paired_runs=2, subject_mode="synthetic")
+            summary = build_multi_summary([result_path])
+            text = format_multi_summary_console(summary)
+            self.assertIn("=== Tokenmessung Summary ===", text)
+            self.assertIn("DEMO DATA ONLY", text)
+            self.assertIn("not to claim real token efficiency", text)
+            self.assertIn("Next step:", text)
 
 
 if __name__ == "__main__":
