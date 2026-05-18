@@ -198,10 +198,10 @@ class CliTests(unittest.TestCase):
             self.assertIn("Verdict: effective", text)
             self.assertIn("What this means:", text)
             self.assertIn("What to do now:", text)
-            self.assertIn("Codex instruction:", text)
-            self.assertIn("Give this to Codex:", text)
-            self.assertIn("Codex should:", text)
-            self.assertIn("Codex must not:", text)
+            self.assertIn("Codex handoff:", text)
+            self.assertIn("- File to send:", text)
+            self.assertIn("- Purpose:", text)
+            self.assertIn("- Boundary:", text)
 
     def test_result_show_prints_human_next_steps_for_all_actions(self) -> None:
         cases = [
@@ -233,8 +233,8 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(code, 0)
                 self.assertIn("What to do now:", text)
                 self.assertIn(expected, text)
-                self.assertIn("Codex should:", text)
-                self.assertIn("Codex must not:", text)
+                self.assertIn("- Purpose:", text)
+                self.assertIn("- Boundary:", text)
 
     def test_result_show_prefers_local_handoff_sibling_over_stale_artifact_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -264,7 +264,7 @@ class CliTests(unittest.TestCase):
             )
             code, text = self.run_cli_text(["result", "show", str(result)])
             self.assertEqual(code, 0)
-            self.assertIn(f"Give this to Codex: {local_handoff.resolve()}", text)
+            self.assertIn(f"- File to send: {local_handoff.resolve()}", text)
             self.assertIn(f"- Human report: {local_report.resolve()}", text)
             self.assertNotIn(str(stale_handoff), text)
 

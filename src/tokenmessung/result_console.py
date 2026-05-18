@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .analyzer import codex_forbidden_action, codex_requested_action, decision_summary, explain_warning, human_bytes
+from .analyzer import decision_summary, explain_warning, human_bytes
 
 
 def format_delta(value: object) -> str:
@@ -80,6 +80,32 @@ def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
     return "Inspect the report before deciding whether another paid run is justified."
 
 
+def handoff_purpose(decision: dict[str, Any]) -> str:
+    next_action = decision.get("next_action")
+    if next_action == "eligible_for_decision_run":
+        return "Codex gets the exact decision-run request and should not optimize yet."
+    if next_action == "stop_fix_quality_or_task_behavior":
+        return "Codex gets the quality or output blockers to fix before any more paid runs."
+    if next_action == "record_decision_grade_win":
+        return "Codex gets a decision-grade win to record and compare against other reports."
+    if next_action == "do_not_claim_efficiency":
+        return "Codex gets the task result to diagnose why this did not prove efficiency."
+    return "Codex gets the report context and should ask for missing evidence before acting."
+
+
+def handoff_safety_boundary(decision: dict[str, Any]) -> str:
+    next_action = decision.get("next_action")
+    if next_action == "eligible_for_decision_run":
+        return "Smoke evidence only; no AGENTS.md/.codex changes and no efficiency claim."
+    if next_action == "stop_fix_quality_or_task_behavior":
+        return "Quality or integrity blockers override token savings."
+    if next_action == "record_decision_grade_win":
+        return "No global claim unless enough decision-grade task reports support it."
+    if next_action == "do_not_claim_efficiency":
+        return "No efficiency claim and no broad rewrites."
+    return "No claims from missing evidence and no decisions from variant medians alone."
+
+
 def print_result(result: dict[str, object], *, compare_history_command: str | None = None, result_dir: Path | None = None) -> None:
     primary = result.get("primary_delta", {})
     quality = result.get("quality", {})
@@ -108,13 +134,13 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     print(f"What this means: {display_explanation}")
     print(f"What to do now: {what_to_do_now(decision, synthetic=synthetic)}")
     codex_handoff = artifact_path(result, "codex_handoff_md", result_dir)
-    print("Codex instruction:")
+    print("Codex handoff:")
     if codex_handoff:
-        print(f"Give this to Codex: {codex_handoff}")
+        print(f"- File to send: {codex_handoff}")
     else:
-        print("Give this to Codex: CODEX_HANDOFF.md was not found beside this result.")
-    print(f"Codex should: {codex_requested_action(result)}")
-    print(f"Codex must not: {codex_forbidden_action(result)}")
+        print("- File to send: CODEX_HANDOFF.md was not found beside this result.")
+    print(f"- Purpose: {handoff_purpose(decision)}")
+    print(f"- Boundary: {handoff_safety_boundary(decision)}")
     isolation = result.get("isolation", {})
     if isinstance(isolation, dict):
         print(f"Isolation: ~/.codex excluded = {isolation.get('home_codex_excluded', False)}")

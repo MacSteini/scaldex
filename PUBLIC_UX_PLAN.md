@@ -211,7 +211,7 @@
 
 - Status: done
 - Measurement:
-  - Console output now includes `Codex instruction`, `Give this to Codex`, `Codex should`, and `Codex must not`.
+  - Console output now includes a human-facing `Codex handoff` block with file path, purpose, and safety boundary.
   - `CODEX_HANDOFF.md` now starts as `Tokenmessung Codex Instruction` and gives Codex a requested action, evidence grade, primary metric, quality gates, allowed actions, forbidden actions, files to inspect, and expected output.
   - Replay prefers local sibling report files next to the loaded `result.json`, so archived handoff files are safe to pass to Codex.
 - Audit:

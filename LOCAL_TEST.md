@@ -34,7 +34,7 @@ Give that file to Codex when you want help interpreting the measurement, decidin
 
 - `What this means`: explains the result in plain language.
 - `What to do now`: tells you whether to hand the result to Codex, stop, run `--repeats 3`, keep the report, or avoid an efficiency claim.
-- `Codex instruction`: shows the exact handoff file and the action Codex should follow.
+- `Codex handoff`: shows the file to send to Codex and summarizes its purpose and safety boundary.
 - `Paired median non-cached input delta`: primary token metric.
 - `Quality`: both agents and control need to be `1.0 / 1.0` for clean evidence.
 
