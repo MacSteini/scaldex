@@ -3,7 +3,7 @@
 ## Current State
 
 - Tokenmessung has a working measurement core: paired agents/control runs, batch IDs, subject fingerprints, run configuration fingerprints, quality gates, normalized repo-relative `relevant_files`, and paired median non-cached input deltas.
-- The current user experience is still too operationally manual: users must infer whether to stop, proceed to decision-grade runs, or reject a global claim from multiple report fields.
+- The current user experience is no longer just raw metrics, but the decision narrative still needs to be explicit enough for a first-time user or fresh Codex agent.
 - End-user documentation is intentionally deferred until the operational UX is stable.
 - No paid Codex benchmark runs are allowed during this implementation sequence unless explicitly approved later.
 
@@ -13,6 +13,7 @@
 - `RESULT.md` starts with a compact decision summary before detailed metrics.
 - Existing result files from multiple runs can be summarized locally without new API calls.
 - Each result includes a Codex-ready handoff brief so users can feed the measurement into a follow-up agent.
+- Each decision explains what happened, why it matters, and what the next action should be.
 - Re-running the default root runner preserves compact previous reports for later summaries.
 - A future smart runner is specified but not implemented.
 - Public README/end-user documentation remains last.
@@ -27,8 +28,9 @@
 | 3 | done | Add local multi-task summary. | Existing `result.json` files can produce `TOKENMESSUNG_SUMMARY.md` and `tokenmessung-summary.json` without API calls. | Mixed fingerprints and mixed smoke/decision-grade inputs are explicit. |
 | 4 | done | Add decision reasons and Codex handoff. | Reports include `Reason`; analysis writes `CODEX_HANDOFF.md`. | Handoff repeats primary-metric and quality-gate rules; no optimisation is automatic. |
 | 5 | done | Preserve compact previous reports. | Default reruns archive compact reports before replacing `tokenmessung-run/`. | Archive excludes raw workspaces and secrets; summaries can use preserved `result.json`. |
-| 6 | done | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior and stop rules. | No auto-run implementation or paid-run trigger added. |
-| 7 | done | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behavior. |
+| 6 | done | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behaviour and stop rules. | No auto-run implementation or paid-run trigger added. |
+| 7 | done | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behaviour. |
+| 8 | done | Add human-readable decision storyline. | Console, `RESULT.md`, `result.json`, and `CODEX_HANDOFF.md` explain the decision in plain language. | No verdict or benchmark math changes; fresh-agent handoff remains non-automatic. |
 
 ## Verification After Each Step
 
@@ -132,7 +134,7 @@
 
 - Status: done
 - Measurement:
-  - Future `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior is specified below.
+  - Future `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behaviour is specified below.
   - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
 - Audit:
@@ -148,7 +150,27 @@
   - `LOCAL_TEST.md` remains the only short local reference.
 - Audit:
   - End-user documentation remains deferred until the operational UX is stable.
-  - Later README examples must match final CLI behavior.
+  - Later README examples must match final CLI behaviour.
+
+### Step 8
+
+- Status: done
+- Measurement:
+  - `result.json` decision data now includes `explanation` and `scope`.
+  - Console output now includes `Decision explanation`.
+  - `RESULT.md` Decision Summary includes a plain-language explanation.
+  - `CODEX_HANDOFF.md` now includes `Human Reading`: what happened, why it matters, and what to do next.
+  - Multi-task/result-set reports no longer describe the evidence as only "this task".
+  - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
+  - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-storyline-probe --repeats 2 --seed 1` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-storyline-probe` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench summarize /private/tmp/tokenmessung-storyline-probe --out /private/tmp/tokenmessung-storyline-summary` passed.
+  - `.codex/bin/validate` passed.
+- Audit:
+  - Verdict, quality gate, and paired primary metric logic remain unchanged.
+  - Handoff remains advisory and does not start paid runs.
+  - Fresh-agent handoff tells the reader not to use variant medians as the decision metric.
 
 ## Future Smart Runner Specification
 

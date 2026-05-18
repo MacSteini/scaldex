@@ -146,6 +146,8 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("low_sample_size", result["reliability"]["warnings"])
             self.assertEqual(result["decision"]["next_action"], "eligible_for_decision_run")
             self.assertEqual(result["decision"]["decision"], "smoke_passed")
+            self.assertIn("smoke run is clean", result["decision"]["explanation"])
+            self.assertEqual(result["decision"]["scope"], "task")
             self.assertEqual(result["decision"]["global_claim_eligibility"], "single-task only / not enough evidence")
             self.assertTrue(result["decision"]["quality_gate_passed"])
             self.assertFalse(result["decision"]["uses_unpaired_variant_medians_for_decision"])
@@ -162,6 +164,7 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("## Decision Summary", result_md)
             self.assertIn("| Next action | eligible_for_decision_run |", result_md)
             self.assertIn("| Reason | smoke_passed_needs_decision_grade |", result_md)
+            self.assertIn("| Explanation | This smoke run is clean", result_md)
             self.assertIn("| Quality gate | passed |", result_md)
             self.assertIn("| Global claim eligibility | single-task only / not enough evidence |", result_md)
             self.assertIn("Variant medians are secondary context", result_md)
@@ -176,6 +179,10 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("## Measurement Decision", handoff_md)
             self.assertIn("- Next action: `eligible_for_decision_run`", handoff_md)
             self.assertIn("- Reason: `smoke_passed_needs_decision_grade`", handoff_md)
+            self.assertIn("- Explanation: This smoke run is clean", handoff_md)
+            self.assertIn("## Human Reading", handoff_md)
+            self.assertIn("- What happened: This smoke run is clean", handoff_md)
+            self.assertIn("use `tokenmessung bench summarize`", handoff_md)
             self.assertIn("Use the paired median non-cached input delta", handoff_md)
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
             deltas = paired_deltas(rows)
@@ -364,6 +371,7 @@ class AnalyzerTests(unittest.TestCase):
         self.assertEqual(result["decision"]["next_action"], "record_decision_grade_win")
         self.assertEqual(result["decision"]["decision"], "decision_grade_effective")
         self.assertEqual(result["decision"]["reason"], "primary_delta_negative_quality_passed")
+        self.assertIn("Decision-grade evidence", result["decision"]["explanation"])
 
     def test_build_result_reports_not_effective_when_primary_metric_regresses(self) -> None:
         summary = {
@@ -380,6 +388,7 @@ class AnalyzerTests(unittest.TestCase):
         result = build_result(summary, [{"task_id": "x"}], [{"task_id": "t", "repeat": 1}])
         self.assertEqual(result["verdict"], "not_effective")
         self.assertEqual(result["decision"]["reason"], "smoke_passed_needs_decision_grade")
+        self.assertIn("repeat the same task", result["decision"]["explanation"])
 
     def test_decision_summary_reports_do_not_claim_for_decision_grade_failure(self) -> None:
         result = {
@@ -392,6 +401,22 @@ class AnalyzerTests(unittest.TestCase):
         self.assertEqual(decision_summary(result)["next_action"], "do_not_claim_efficiency")
         self.assertEqual(decision_summary(result)["decision"], "decision_grade_not_effective")
         self.assertEqual(decision_summary(result)["reason"], "primary_delta_non_negative")
+        self.assertIn("did not reduce", decision_summary(result)["explanation"])
+
+    def test_decision_summary_uses_result_set_language_for_multi_task_results(self) -> None:
+        result = {
+            "verdict": "effective",
+            "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+            "primary_delta": {"agents_minus_control": -100},
+            "benchmark_warnings": [],
+            "final_relevant_files": {"normalized_repo_relative_only": True},
+            "reliability": {"paired_runs": 3},
+            "context": {"task_ids": ["login_test_failure", "feature_x_plan"]},
+        }
+        decision = decision_summary(result)
+        self.assertIn("for this result set", decision["explanation"])
+        self.assertEqual(decision["scope"], "result_set")
+        self.assertEqual(decision["global_claim_eligibility"], "multi-task result set / use summary eligibility rule")
 
     def test_decision_summary_reports_stop_for_smoke_quality_failure(self) -> None:
         result = {
@@ -403,6 +428,7 @@ class AnalyzerTests(unittest.TestCase):
         }
         self.assertEqual(decision_summary(result)["next_action"], "stop_fix_quality_or_task_behavior")
         self.assertEqual(decision_summary(result)["reason"], "quality_gate_failed")
+        self.assertIn("Stop before spending more", decision_summary(result)["explanation"])
 
     def test_human_bytes_formats_sizes(self) -> None:
         self.assertEqual(human_bytes(999), "999 B")

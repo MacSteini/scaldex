@@ -211,6 +211,7 @@ def print_result(result: dict[str, object]) -> None:
             print(f"- {warning}: {explain_warning(str(warning))}")
     print(f"Next action: {decision.get('next_action', 'unknown')}")
     print(f"Decision reason: {decision.get('reason', 'unknown')}")
+    print(f"Decision explanation: {decision.get('explanation', 'unknown')}")
     if isinstance(tool_sanity, dict):
         print(
             "Tool sanity: schema v{schema}; isolation reporting={isolation}; separated warnings={warnings}; aggregated output={output}".format(

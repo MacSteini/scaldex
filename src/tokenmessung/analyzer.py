@@ -596,11 +596,38 @@ def decision_grade(result: dict[str, Any]) -> bool:
     return isinstance(reliability, dict) and number(reliability.get("paired_runs")) >= 3
 
 
+DECISION_EXPLANATIONS = {
+    "quality_gate_failed": "Stop before spending more: quality, warnings, expected files, structured output, or normalized repo-relative paths failed.",
+    "smoke_passed_needs_decision_grade": "This smoke run is clean; repeat the same task with at least three paired runs before treating the result as stable.",
+    "primary_delta_negative_quality_passed": "Decision-grade evidence passed quality gates and reduced paired median non-cached input tokens for this task.",
+    "primary_delta_non_negative": "Quality passed, but the instruction package did not reduce the paired median non-cached input metric; do not claim efficiency for this task.",
+    "secondary_or_integrity_warnings_present": "Primary tokens improved, but secondary or integrity warnings prevent a clean efficiency claim.",
+    "decision_not_effective": "The decision-grade result is not an efficiency win; inspect task behaviour before rerunning paid measurements.",
+}
+
+
+def decision_explanation(reason: str, *, multi_task: bool = False) -> str:
+    explanation = DECISION_EXPLANATIONS.get(reason, DECISION_EXPLANATIONS["decision_not_effective"])
+    if multi_task:
+        explanation = explanation.replace("for this task", "for this result set")
+        explanation = explanation.replace("the same task", "the same task set")
+    return explanation
+
+
 def decision_summary(result: dict[str, Any]) -> dict[str, Any]:
     quality_ok = quality_gate_passed(result)
     is_decision_grade = decision_grade(result)
     primary = result.get("primary_delta", {})
     benchmark_warnings = result.get("benchmark_warnings", [])
+    context = result.get("context", {})
+    task_ids = context.get("task_ids", []) if isinstance(context, dict) else []
+    multi_task = len(task_ids) > 1
+    scope = "result_set" if multi_task else "task"
+    global_claim_eligibility = (
+        "multi-task result set / use summary eligibility rule"
+        if multi_task
+        else "single-task only / not enough evidence"
+    )
     primary_delta = number(primary.get("agents_minus_control")) if isinstance(primary, dict) else 0.0
     if is_decision_grade:
         next_action = "record_decision_grade_win" if result.get("verdict") == "effective" and quality_ok else "do_not_claim_efficiency"
@@ -618,6 +645,7 @@ def decision_summary(result: dict[str, Any]) -> dict[str, Any]:
         reason = "secondary_or_integrity_warnings_present"
     else:
         reason = "decision_not_effective"
+    explanation = decision_explanation(reason, multi_task=multi_task)
     return {
         "decision": {
             "eligible_for_decision_run": "smoke_passed",
@@ -627,10 +655,12 @@ def decision_summary(result: dict[str, Any]) -> dict[str, Any]:
         }[next_action],
         "next_action": next_action,
         "reason": reason,
+        "explanation": explanation,
+        "scope": scope,
         "quality_gate_passed": quality_ok,
         "decision_grade": is_decision_grade,
         "primary_metric_basis": "paired_median_non_cached_input_delta",
-        "global_claim_eligibility": "single-task only / not enough evidence",
+        "global_claim_eligibility": global_claim_eligibility,
         "uses_unpaired_variant_medians_for_decision": False,
     }
 
@@ -859,6 +889,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         f"| Decision | {decision.get('decision', 'n/a') if isinstance(decision, dict) else 'n/a'} |",
         f"| Next action | {decision.get('next_action', 'n/a') if isinstance(decision, dict) else 'n/a'} |",
         f"| Reason | {decision.get('reason', 'n/a') if isinstance(decision, dict) else 'n/a'} |",
+        f"| Explanation | {decision.get('explanation', 'n/a') if isinstance(decision, dict) else 'n/a'} |",
         f"| Primary metric | {decision.get('primary_metric_basis', 'paired_median_non_cached_input_delta') if isinstance(decision, dict) else 'paired_median_non_cached_input_delta'} |",
         f"| Quality gate | {'passed' if isinstance(decision, dict) and decision.get('quality_gate_passed') else 'failed'} |",
         f"| Warnings | {format_warning_list(benchmark_warnings)} |",
@@ -971,13 +1002,20 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
 
 def handoff_request(decision: dict[str, Any]) -> str:
     next_action = decision.get("next_action")
+    scope = decision.get("scope", "task")
     if next_action == "eligible_for_decision_run":
+        if scope == "result_set":
+            return "Run decision-grade measurements for this same task set before making package optimisation claims."
         return "Run a decision-grade measurement for this same task before making package optimisation claims."
     if next_action == "stop_fix_quality_or_task_behavior":
         return "Fix quality, expected-file, structured-output, or path issues before spending more runs on efficiency."
     if next_action == "record_decision_grade_win":
+        if scope == "result_set":
+            return "Record this as decision-grade evidence and verify global claim eligibility with `tokenmessung bench summarize` before making a public claim."
         return "Record this as a decision-grade win and combine it with other decision-grade task results before making a global claim."
     if next_action == "do_not_claim_efficiency":
+        if scope == "result_set":
+            return "Do not claim efficiency for this result set. Inspect task-level reports before optimising or rerunning paid measurements."
         return "Do not claim efficiency for this task. If optimising the package, inspect task-specific behaviour and propose minimal changes before rerunning."
     return "Inspect the report before choosing the next action."
 
@@ -1006,6 +1044,7 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         f"- Decision: `{decision.get('decision', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
         f"- Next action: `{decision.get('next_action', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
         f"- Reason: `{decision.get('reason', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
+        f"- Explanation: {decision.get('explanation', 'unknown') if isinstance(decision, dict) else 'unknown'}",
         f"- Primary metric: `{decision.get('primary_metric_basis', 'paired_median_non_cached_input_delta') if isinstance(decision, dict) else 'paired_median_non_cached_input_delta'}`",
         f"- Paired median non-cached input delta: {format_number(primary.get('agents_minus_control', 0) if isinstance(primary, dict) else 0)} ({format_percent(primary.get('percent') if isinstance(primary, dict) else None)})",
         f"- Quality: agents {quality.get('agents_success_rate', 'n/a') if isinstance(quality, dict) else 'n/a'} / control {quality.get('control_success_rate', 'n/a') if isinstance(quality, dict) else 'n/a'}",
@@ -1016,12 +1055,18 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         f"- Run config fingerprint: `{integrity.get('run_config_fingerprint', 'n/a') if isinstance(integrity, dict) else 'n/a'}`",
         f"- Subject size: {human_bytes(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} across {format_number(subject.get('source_file_count', 0) if isinstance(subject, dict) else 0)} files",
         "",
+        "## Human Reading",
+        "",
+        f"- What happened: {decision.get('explanation', 'Inspect the report before acting.') if isinstance(decision, dict) else 'Inspect the report before acting.'}",
+        "- Why it matters: the primary decision metric is paired median non-cached input delta; variant medians are only supporting context.",
+        f"- What to do next: {handoff_request(decision if isinstance(decision, dict) else {})}",
+        "",
         "## Interpretation Rules",
         "",
         "- Use the paired median non-cached input delta as the primary decision metric.",
         "- Treat variant medians as secondary context only.",
         "- Treat failed quality gates, missing expected files, invalid final JSON, missing usage data, or benchmark warnings as blockers.",
-        "- Do not make a global token-efficiency claim from a single task.",
+        "- Do not make a global token-efficiency claim from this report alone; use `tokenmessung bench summarize` across decision-grade task reports.",
         "- Do not rerun paid benchmarks until the next action is clear.",
         "",
         "## Follow-up Request",
