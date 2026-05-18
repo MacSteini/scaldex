@@ -155,7 +155,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("=== Tokenmessung Result ===", text)
             self.assertIn("Verdict: effective", text)
-            self.assertIn("Decision explanation:", text)
+            self.assertIn("Plain explanation:", text)
             self.assertIn("Codex handoff:", text)
 
     def test_result_show_missing_result_exits_cleanly(self) -> None:

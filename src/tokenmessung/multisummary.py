@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 from .schemas import TASKS
@@ -45,7 +47,31 @@ def task_id_for_result(result: dict[str, Any]) -> str:
     return "unknown"
 
 
-def result_row(path: Path, result: dict[str, Any]) -> dict[str, Any]:
+def result_task_ids(result: dict[str, Any]) -> list[str]:
+    context = result.get("context", {})
+    task_ids = context.get("task_ids", []) if isinstance(context, dict) else []
+    return [str(task_id) for task_id in task_ids] if isinstance(task_ids, list) else []
+
+
+def load_paired_delta_rows(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        return []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def result_artifact_path(result_path: Path, result: dict[str, Any], key: str) -> Path | None:
+    artifacts = result.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        return None
+    raw = artifacts.get(key)
+    if not isinstance(raw, str) or not raw:
+        return None
+    candidate = Path(raw)
+    return candidate if candidate.is_absolute() else result_path.parent / candidate.name
+
+
+def result_row(path: Path, result: dict[str, Any], *, task_id: str | None = None, task_paired_rows: list[dict[str, str]] | None = None) -> dict[str, Any]:
     primary = result.get("primary_delta", {}) if isinstance(result.get("primary_delta", {}), dict) else {}
     quality = result.get("quality", {}) if isinstance(result.get("quality", {}), dict) else {}
     reliability = result.get("reliability", {}) if isinstance(result.get("reliability", {}), dict) else {}
@@ -56,17 +82,38 @@ def result_row(path: Path, result: dict[str, Any]) -> dict[str, Any]:
     benchmark_warnings = result.get("benchmark_warnings", [])
     if not isinstance(benchmark_warnings, list):
         benchmark_warnings = [str(benchmark_warnings)]
+    paired_runs = reliability.get("paired_runs", 0)
+    agents_quality = quality.get("agents_success_rate", 0)
+    control_quality = quality.get("control_success_rate", 0)
+    delta = primary.get("agents_minus_control", 0)
+    percent = primary.get("percent")
+    if task_paired_rows is not None:
+        paired_runs = len(task_paired_rows)
+        if paired_runs:
+            agents_quality = sum(1 for row in task_paired_rows if str(row.get("agents_success")) == "True") / paired_runs
+            control_quality = sum(1 for row in task_paired_rows if str(row.get("control_success")) == "True") / paired_runs
+            deltas = [
+                float(row["delta_non_cached_input_tokens_agents_minus_control"])
+                for row in task_paired_rows
+                if row.get("delta_non_cached_input_tokens_agents_minus_control") not in ("", None)
+            ]
+            delta = median(deltas) if deltas else 0
+            percent = None
+    decision_grade = bool(decision.get("decision_grade", float(paired_runs or 0) >= 3))
+    if task_paired_rows is not None:
+        decision_grade = paired_runs >= 3
+    result_task_count = len(result_task_ids(result))
     return {
         "source": str(path),
-        "task_id": task_id_for_result(result),
+        "task_id": task_id or task_id_for_result(result),
         "verdict": result.get("verdict", "unknown"),
-        "decision_grade": bool(decision.get("decision_grade", float(reliability.get("paired_runs", 0) or 0) >= 3)),
-        "paired_runs": reliability.get("paired_runs", 0),
+        "decision_grade": decision_grade,
+        "paired_runs": paired_runs,
         "next_action": decision.get("next_action", ""),
-        "agents_quality": quality.get("agents_success_rate", 0),
-        "control_quality": quality.get("control_success_rate", 0),
-        "delta_non_cached_input_tokens": primary.get("agents_minus_control", 0),
-        "delta_percent": primary.get("percent"),
+        "agents_quality": agents_quality,
+        "control_quality": control_quality,
+        "delta_non_cached_input_tokens": delta,
+        "delta_percent": percent,
         "agents_variant_median": primary.get("agents_median", 0),
         "control_variant_median": primary.get("control_median", 0),
         "benchmark_warnings": benchmark_warnings,
@@ -75,7 +122,23 @@ def result_row(path: Path, result: dict[str, Any]) -> dict[str, Any]:
         "run_config_fingerprint": integrity.get("run_config_fingerprint", ""),
         "subject_files": subject.get("source_file_count", 0),
         "subject_bytes": subject.get("total_bytes", 0),
+        "subject_mode": subject.get("mode", ""),
+        "synthetic": subject.get("mode", "") == "synthetic" or result.get("context", {}).get("model") == "synthetic",
+        "source_report_task_count": result_task_count,
+        "source_report_scope": "multi_task_report" if result_task_count > 1 else "single_task_report",
     }
+
+
+def result_rows(path: Path, result: dict[str, Any]) -> list[dict[str, Any]]:
+    task_ids = result_task_ids(result)
+    paired_deltas_path = result_artifact_path(path, result, "paired_deltas_csv")
+    paired_rows = load_paired_delta_rows(paired_deltas_path) if paired_deltas_path else []
+    if len(task_ids) > 1 and paired_rows:
+        rows: list[dict[str, Any]] = []
+        for task_id in task_ids:
+            rows.append(result_row(path, result, task_id=task_id, task_paired_rows=[row for row in paired_rows if row.get("task_id") == task_id]))
+        return rows
+    return [result_row(path, result)]
 
 
 def quality_ok(row: dict[str, Any]) -> bool:
@@ -88,7 +151,7 @@ def quality_ok(row: dict[str, Any]) -> bool:
 
 
 def build_multi_summary(paths: list[Path]) -> dict[str, Any]:
-    rows = [result_row(path, load_result_json(path)) for path in paths]
+    rows = [row for path in paths for row in result_rows(path, load_result_json(path))]
     task_grades: dict[str, set[bool]] = {}
     for row in rows:
         task_grades.setdefault(str(row["task_id"]), set()).add(bool(row["decision_grade"]))
@@ -96,6 +159,8 @@ def build_multi_summary(paths: list[Path]) -> dict[str, Any]:
     subject_fingerprints = sorted({str(row.get("subject_fingerprint", "")) for row in rows if row.get("subject_fingerprint")})
     if len(subject_fingerprints) != 1:
         warnings.append("mixed_or_missing_subject_fingerprints")
+    if any(row.get("synthetic") for row in rows):
+        warnings.append("synthetic_results_only")
     mixed_grade_tasks = sorted(task for task, grades in task_grades.items() if len(grades) > 1)
     if mixed_grade_tasks:
         warnings.append("mixed_smoke_and_decision_grade_results")
@@ -145,13 +210,64 @@ def fmt_percent(value: Any) -> str:
         return "n/a"
 
 
+def fmt_delta(value: Any) -> str:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "n/a"
+    if numeric.is_integer():
+        return f"{int(numeric):,}"
+    return f"{numeric:,.1f}"
+
+
+def plain_global_explanation(summary: dict[str, Any]) -> str:
+    if summary["global_token_efficiency_claim_allowed"]:
+        return "You have enough decision-grade task evidence to claim global token efficiency for this measured subject."
+    blockers = set(summary.get("global_blockers", []))
+    if "synthetic_results_only" in blockers or "synthetic_results_only" in set(summary.get("warnings", [])):
+        return "This is synthetic demo data. Use it to inspect the report format, not to claim real token efficiency."
+    if any(str(blocker).startswith("decision_grade_tasks_incomplete:") for blocker in blockers):
+        return "The summary does not yet contain decision-grade evidence for all expected tasks."
+    if any(str(blocker).startswith("effective_decision_grade_tasks_below_threshold:") for blocker in blockers):
+        return "Too few decision-grade tasks are effective, so a global efficiency claim would be misleading."
+    return "The evidence set has blockers. Read the warnings and task table before making any claim."
+
+
+def next_summary_action(summary: dict[str, Any]) -> str:
+    if summary["global_token_efficiency_claim_allowed"]:
+        return "Record this as a global decision-grade win and keep the summary with the release evidence."
+    warnings = set(summary.get("warnings", []))
+    if "synthetic_results_only" in warnings:
+        return "For a real assessment, run paid smoke or decision-grade benchmarks against an actual subject package."
+    if "mixed_or_missing_subject_fingerprints" in warnings:
+        return "Do not compare these runs until all reports use the same subject fingerprint."
+    if "mixed_smoke_and_decision_grade_results" in warnings:
+        return "Separate smoke and decision-grade reports, or rerun the affected tasks consistently."
+    return "Do not claim global efficiency yet; collect the missing decision-grade task reports or fix failed tasks first."
+
+
 def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
+    synthetic = "synthetic_results_only" in summary.get("warnings", [])
     lines = [
         "# Tokenmessung Multi-Task Summary",
+        "",
+        "## What This Is",
+        "",
+        "This report combines existing `result.json` files. It does not run Codex and does not spend API money.",
+        "",
+        "Synthetic demo data is useful for checking the report layout only." if synthetic else "Use this summary to decide whether several task reports support a broader efficiency claim.",
+        "",
+        "## Decision",
         "",
         f"Global decision: **{summary['global_decision']}**",
         "",
         f"Global token efficiency claim allowed: **{summary['global_token_efficiency_claim_allowed']}**",
+        "",
+        f"Plain explanation: {plain_global_explanation(summary)}",
+        "",
+        f"Next action: {next_summary_action(summary)}",
+        "",
+        "## Evidence",
         "",
         "| Metric | Value |",
         "| --- | ---: |",
@@ -184,24 +300,29 @@ def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
             "",
             "## Tasks",
             "",
-            "| Task | Grade | Verdict | Quality | Delta | Normalized paths | Warnings |",
-            "| --- | --- | --- | ---: | ---: | --- | --- |",
+            "| Task | Evidence | Paired runs | Verdict | Quality | Token delta | Path check | Warnings | Source |",
+            "| --- | --- | ---: | --- | ---: | ---: | --- | --- | --- |",
         ]
     )
     for row in summary["tasks"]:
-        grade = "decision" if row["decision_grade"] else "smoke"
+        grade = "decision-grade" if row["decision_grade"] else "smoke/demo"
         quality = f"{row['agents_quality']} / {row['control_quality']}"
-        delta = f"{row['delta_non_cached_input_tokens']} ({fmt_percent(row['delta_percent'])})"
+        delta = f"{fmt_delta(row['delta_non_cached_input_tokens'])} ({fmt_percent(row['delta_percent'])})"
         warnings_text = ", ".join(row["benchmark_warnings"]) if row["benchmark_warnings"] else "none"
+        source = Path(str(row["source"])).name
+        if row.get("source_report_scope") == "multi_task_report":
+            source = f"{source} (split from multi-task report)"
         lines.append(
-            "| {task} | {grade} | {verdict} | {quality} | {delta} | {paths} | {warnings} |".format(
+            "| {task} | {grade} | {paired_runs} | {verdict} | {quality} | {delta} | {paths} | {warnings} | {source} |".format(
                 task=row["task_id"],
                 grade=grade,
+                paired_runs=row["paired_runs"],
                 verdict=row["verdict"],
                 quality=quality,
                 delta=delta,
-                paths=row["normalized_repo_relative_relevant_files_only"],
+                paths="ok" if row["normalized_repo_relative_relevant_files_only"] else "failed",
                 warnings=warnings_text,
+                source=source,
             )
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

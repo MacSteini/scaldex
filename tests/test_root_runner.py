@@ -115,7 +115,7 @@ class RootRunnerTests(unittest.TestCase):
             self.assertEqual(error.getvalue(), "")
             self.assertIn("=== Tokenmessung Result ===", output.getvalue())
             self.assertIn("Verdict: effective", output.getvalue())
-            self.assertIn("Decision explanation:", output.getvalue())
+            self.assertIn("Plain explanation:", output.getvalue())
             self.assertIn("Human report:", output.getvalue())
             self.assertIn("Codex handoff:", output.getvalue())
 
@@ -205,7 +205,7 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Reliability: low (1 paired run(s))", output.getvalue())
             self.assertIn("Next action:", output.getvalue())
             self.assertIn("Decision reason:", output.getvalue())
-            self.assertIn("Decision explanation:", output.getvalue())
+            self.assertIn("Plain explanation:", output.getvalue())
             self.assertIn("Tool sanity: schema v1", output.getvalue())
             self.assertIn("Codex handoff:", output.getvalue())
             self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())

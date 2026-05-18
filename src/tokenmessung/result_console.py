@@ -45,15 +45,26 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     decision = result.get("decision", {})
     if not isinstance(decision, dict) or not decision:
         decision = decision_summary(result)
+    synthetic = isinstance(subject, dict) and subject.get("mode") == "synthetic"
+    display_next_action = "inspect_report_layout_only" if synthetic else decision.get("next_action", "unknown")
+    display_explanation = (
+        "This is synthetic demo data. Use it to inspect the output format, not as real benchmark evidence."
+        if synthetic
+        else decision.get("explanation", "unknown")
+    )
     percent = primary.get("percent") if isinstance(primary, dict) else None
     percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
     print("\n=== Tokenmessung Result ===")
     print(f"Verdict: {result.get('verdict', 'unknown')}")
+    print(f"Plain explanation: {display_explanation}")
+    print(f"Next action: {display_next_action}")
     isolation = result.get("isolation", {})
     if isinstance(isolation, dict):
         print(f"Isolation: ~/.codex excluded = {isolation.get('home_codex_excluded', False)}")
     if isinstance(subject, dict):
         print(f"Subject: {subject.get('mode', 'n/a')} / {format_delta(subject.get('source_file_count'))} files / {human_bytes(subject.get('total_bytes'))} ({format_delta(subject.get('total_bytes'))} bytes)")
+        if subject.get("mode") == "synthetic":
+            print("Report type: synthetic demo data; use this to inspect the output format, not as real benchmark evidence.")
     if isinstance(integrity, dict):
         print(f"Batch: {integrity.get('batch_id', 'n/a')}")
         print(f"Subject fingerprint: {integrity.get('subject_fingerprint', 'n/a')}")
@@ -77,9 +88,7 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
         print(f"Reliability: {level} ({paired_runs} paired run(s))")
         for warning in reliability.get("warnings", []):
             print(f"- {warning}: {explain_warning(str(warning))}")
-    print(f"Next action: {decision.get('next_action', 'unknown')}")
     print(f"Decision reason: {decision.get('reason', 'unknown')}")
-    print(f"Decision explanation: {decision.get('explanation', 'unknown')}")
     if isinstance(tool_sanity, dict):
         print(
             "Tool sanity: schema v{schema}; isolation reporting={isolation}; separated warnings={warnings}; aggregated output={output}".format(
