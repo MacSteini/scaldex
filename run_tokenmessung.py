@@ -21,21 +21,36 @@ from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, new_batc
 from tokenmessung.schemas import TASKS  # noqa: E402
 
 
+class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run a local Codex AGENTS token benchmark.")
-    parser.add_argument("--model")
-    parser.add_argument("--subject-dir", type=Path, default=Path("subject"))
-    parser.add_argument("--run-dir", type=Path, default=Path("tokenmessung-run"))
-    parser.add_argument("--repeats", type=int, default=1)
-    parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--task-id", action="append", dest="task_ids")
-    parser.add_argument("--all-tasks", action="store_true")
-    parser.add_argument("--heartbeat-seconds", type=float, default=10.0)
-    parser.add_argument("--max-run-seconds", type=float, default=300.0)
-    parser.add_argument("--subject-mode", choices=("package", "agents-md"), default="package")
-    parser.add_argument("--history-dir", type=Path, default=Path("tokenmessung-history"))
-    parser.add_argument("--no-archive-previous-result", action="store_true")
-    parser.add_argument("--print-result", type=Path, help="Print an existing result.json without running Codex.")
+    parser = argparse.ArgumentParser(
+        description="Measure whether an AGENTS.md/Codex instruction package helps or hurts token usage.",
+        epilog=(
+            "Typical flow:\n"
+            "  1. Put AGENTS.md and optional support files in subject/.\n"
+            "  2. Run a low-cost smoke test: python3 run_tokenmessung.py --model gpt-5.4\n"
+            "  3. Replay an existing report without spending money: python3 run_tokenmessung.py --print-result tokenmessung-run/result.json\n\n"
+            "Tokenmessung never stores your Codex API key in generated reports. If CODEX_API_KEY is not already set,\n"
+            "the tool asks for it at a hidden prompt for that process only."
+        ),
+        formatter_class=HelpFormatter,
+    )
+    parser.add_argument("--model", help="Codex model for paid benchmark runs. Required unless --print-result is used.")
+    parser.add_argument("--subject-dir", type=Path, default=Path("subject"), help="Folder containing the instruction package to measure.")
+    parser.add_argument("--run-dir", type=Path, default=Path("tokenmessung-run"), help="Output folder for the current run report.")
+    parser.add_argument("--repeats", type=int, default=1, help="Paired repeats per selected task. Use 1 for smoke, 3+ for decision-grade evidence.")
+    parser.add_argument("--seed", type=int, default=1, help="Seed for deterministic task ordering.")
+    parser.add_argument("--task-id", action="append", dest="task_ids", help="Task to run. Repeat this option for multiple selected tasks.")
+    parser.add_argument("--all-tasks", action="store_true", help="Run every built-in task. This increases paid Codex runs.")
+    parser.add_argument("--heartbeat-seconds", type=float, default=10.0, help="Seconds between progress heartbeat messages.")
+    parser.add_argument("--max-run-seconds", type=float, default=300.0, help="Maximum seconds before one Codex run is stopped.")
+    parser.add_argument("--subject-mode", choices=("package", "agents-md"), default="package", help="Measure the whole package or AGENTS.md only.")
+    parser.add_argument("--history-dir", type=Path, default=Path("tokenmessung-history"), help="Folder for compact archived reports from previous default runs.")
+    parser.add_argument("--no-archive-previous-result", action="store_true", help="Do not archive the previous generated run before replacing --run-dir.")
+    parser.add_argument("--print-result", type=Path, help="Print an existing result.json without an API key, subject audit, or paid Codex run.")
     return parser
 
 

@@ -83,6 +83,15 @@ def write_fake_outputs(root: Path) -> dict[str, Path]:
 
 
 class RootRunnerTests(unittest.TestCase):
+    def test_help_text_explains_common_enduser_flow(self) -> None:
+        module = load_root_runner()
+        help_text = module.build_parser().format_help()
+        self.assertIn("Typical flow:", help_text)
+        self.assertIn("--print-result tokenmessung-run/result.json", help_text)
+        self.assertIn("never stores your Codex API key", help_text)
+        self.assertIn("Use 1 for smoke, 3+", help_text)
+        self.assertIn("for decision-grade evidence.", help_text)
+
     def test_missing_subject_agents_exits_cleanly(self) -> None:
         module = load_root_runner()
         with tempfile.TemporaryDirectory() as tmp:

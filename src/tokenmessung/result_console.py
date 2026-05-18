@@ -19,7 +19,10 @@ def format_delta(value: object) -> str:
 
 def load_result_json(path: Path) -> dict[str, Any]:
     if not path.is_file():
-        raise SystemExit(f"Missing result file: {path}")
+        raise SystemExit(
+            f"Missing result file: {path}\n"
+            "Pass an existing tokenmessung-run/result.json, or run a smoke test first to create one."
+        )
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:

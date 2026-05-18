@@ -17,6 +17,8 @@ python3 run_tokenmessung.py --model gpt-5.4
 ```
 
 If the tool asks for a key, enter your Codex API key at the hidden prompt.
+Tokenmessung does not write that key into reports, history, or config files.
+That is why you may need to enter it again in a new terminal run unless you set `CODEX_API_KEY` yourself.
 
 ## Read The Result
 
@@ -31,9 +33,12 @@ If the tool asks for a key, enter your Codex API key at the hidden prompt.
 python3 run_tokenmessung.py --print-result tokenmessung-run/result.json
 ```
 
+Replay needs an existing `result.json`. If that path does not exist yet, run a smoke test first or point `--print-result` at another Tokenmessung report.
+
 ## Compare Current And Older Runs
 
 When you run the tool again, Tokenmessung archives the previous compact report in `tokenmessung-history/`.
+Only run this command after `tokenmessung-history/` exists.
 
 ```sh
 PYTHONPATH=src python3 -m tokenmessung bench summarize tokenmessung-history tokenmessung-run --out tokenmessung-summary

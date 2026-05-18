@@ -123,6 +123,13 @@ class CliTests(unittest.TestCase):
             self.assertTrue(Path(payload["summary_json"]).exists())
             self.assertTrue(Path(payload["summary_md"]).exists())
 
+    def test_bench_summarize_missing_input_exits_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            with self.assertRaises(SystemExit) as ctx:
+                main(["bench", "summarize", str(base / "missing-history"), "--out", str(base / "out")])
+            self.assertIn("Cannot summarize results: Result input not found", str(ctx.exception))
+
     def test_result_show_prints_existing_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -150,6 +157,14 @@ class CliTests(unittest.TestCase):
             self.assertIn("Verdict: effective", text)
             self.assertIn("Decision explanation:", text)
             self.assertIn("Codex handoff:", text)
+
+    def test_result_show_missing_result_exits_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "result.json"
+            with self.assertRaises(SystemExit) as ctx:
+                main(["result", "show", str(missing)])
+            self.assertIn("Missing result file", str(ctx.exception))
+            self.assertIn("run a smoke test first", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -89,7 +89,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
         return 0
     if args.command == "bench" and args.bench_command == "summarize":
-        paths = summarize_results(args.inputs, args.out)
+        try:
+            paths = summarize_results(args.inputs, args.out)
+        except (FileNotFoundError, ValueError) as exc:
+            raise SystemExit(f"Cannot summarize results: {exc}") from exc
         print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
         return 0
     if args.command == "bench" and args.bench_command == "doctor":
