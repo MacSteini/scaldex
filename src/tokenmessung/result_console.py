@@ -32,6 +32,28 @@ def load_result_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
+    if synthetic:
+        return "Use this only for Tokenmessung development or CI checks. It does not measure your AGENTS.md or .codex package."
+    next_action = decision.get("next_action")
+    scope = decision.get("scope", "task")
+    if next_action == "eligible_for_decision_run":
+        if scope == "result_set":
+            return "Run the same task set with --repeats 3 before trusting the result as decision-grade evidence."
+        return "Run this same task with --repeats 3 before trusting the result as decision-grade evidence."
+    if next_action == "stop_fix_quality_or_task_behavior":
+        return "Stop here. Fix the quality, expected-file, structured-output, warning, or path issue before spending more money."
+    if next_action == "record_decision_grade_win":
+        if scope == "result_set":
+            return "Keep this as decision-grade evidence, then summarize all decision-grade task reports before making a global claim."
+        return "Keep this report as a decision-grade win, then compare it with other decision-grade task reports before making a global claim."
+    if next_action == "do_not_claim_efficiency":
+        if scope == "result_set":
+            return "Do not claim efficiency from this result set. Inspect the task-level reports before changing the package or rerunning paid tests."
+        return "Do not claim efficiency from this task. Inspect the task behavior before changing the package or rerunning paid tests."
+    return "Inspect the report before deciding whether another paid run is justified."
+
+
 def print_result(result: dict[str, object], *, compare_history_command: str | None = None) -> None:
     primary = result.get("primary_delta", {})
     quality = result.get("quality", {})
@@ -46,25 +68,25 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     if not isinstance(decision, dict) or not decision:
         decision = decision_summary(result)
     synthetic = isinstance(subject, dict) and subject.get("mode") == "synthetic"
-    display_next_action = "inspect_report_layout_only" if synthetic else decision.get("next_action", "unknown")
     display_explanation = (
-        "This is synthetic demo data. Use it to inspect the output format, not as real benchmark evidence."
+        "This is synthetic Tokenmessung test data. It is useful for development checks only, not as real benchmark evidence."
         if synthetic
         else decision.get("explanation", "unknown")
     )
     percent = primary.get("percent") if isinstance(primary, dict) else None
     percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
     print("\n=== Tokenmessung Result ===")
+    print(f"Result type: {'developer/CI synthetic fixture' if synthetic else 'real benchmark report'}")
     print(f"Verdict: {result.get('verdict', 'unknown')}")
-    print(f"Plain explanation: {display_explanation}")
-    print(f"Next action: {display_next_action}")
+    print(f"What this means: {display_explanation}")
+    print(f"What to do now: {what_to_do_now(decision, synthetic=synthetic)}")
     isolation = result.get("isolation", {})
     if isinstance(isolation, dict):
         print(f"Isolation: ~/.codex excluded = {isolation.get('home_codex_excluded', False)}")
     if isinstance(subject, dict):
         print(f"Subject: {subject.get('mode', 'n/a')} / {format_delta(subject.get('source_file_count'))} files / {human_bytes(subject.get('total_bytes'))} ({format_delta(subject.get('total_bytes'))} bytes)")
         if subject.get("mode") == "synthetic":
-            print("Report type: synthetic demo data; use this to inspect the output format, not as real benchmark evidence.")
+            print("Report note: synthetic Tokenmessung test data; development and CI checks only.")
     if isinstance(integrity, dict):
         print(f"Batch: {integrity.get('batch_id', 'n/a')}")
         print(f"Subject fingerprint: {integrity.get('subject_fingerprint', 'n/a')}")
@@ -88,7 +110,6 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
         print(f"Reliability: {level} ({paired_runs} paired run(s))")
         for warning in reliability.get("warnings", []):
             print(f"- {warning}: {explain_warning(str(warning))}")
-    print(f"Decision reason: {decision.get('reason', 'unknown')}")
     if isinstance(tool_sanity, dict):
         print(
             "Tool sanity: schema v{schema}; isolation reporting={isolation}; separated warnings={warnings}; aggregated output={output}".format(

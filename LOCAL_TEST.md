@@ -1,8 +1,8 @@
 # Local Tokenmessung Test
 
-Use this file for a local smoke test before spending money on larger runs.
+Use this file to run Tokenmessung against a real local `AGENTS.md` package.
 
-## Prepare
+## Enduser Flow
 
 1. Open a terminal in this project folder.
 2. Create `subject/`.
@@ -20,9 +20,15 @@ If the tool asks for a key, enter your Codex API key at the hidden prompt.
 Tokenmessung does not write that key into reports, history, or config files.
 That is why you may need to enter it again in a new terminal run unless you set `CODEX_API_KEY` yourself.
 
-## Read The Result
+## Read The Terminal Output
 
-- Console: shows the verdict, quality gate, next action, and report paths.
+- `What this means`: explains the result in plain language.
+- `What to do now`: tells you whether to stop, run `--repeats 3`, keep the report, or avoid an efficiency claim.
+- `Paired median non-cached input delta`: primary token metric.
+- `Quality`: both agents and control need to be `1.0 / 1.0` for clean evidence.
+
+## Use The Report Files
+
 - `tokenmessung-run/RESULT.md`: main human-readable report.
 - `tokenmessung-run/CODEX_HANDOFF.md`: short follow-up brief for Codex.
 - `tokenmessung-run/result.json`: machine-readable report.
@@ -44,7 +50,7 @@ Only run this command after `tokenmessung-history/` exists.
 PYTHONPATH=src python3 -m tokenmessung bench summarize tokenmessung-history tokenmessung-run --out tokenmessung-summary
 ```
 
-Read `tokenmessung-summary/TOKENMESSUNG_SUMMARY.md` for the combined view.
+The command prints the combined decision view in the terminal. It also writes `tokenmessung-summary/TOKENMESSUNG_SUMMARY.md` and `tokenmessung-summary/tokenmessung-summary.json` for later review or automation.
 
 ## Notes
 

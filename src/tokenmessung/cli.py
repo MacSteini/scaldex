@@ -8,7 +8,7 @@ from .analyzer import analyze_results
 from .fixture import create_fixture
 from .multisummary import format_multi_summary_console, summarize_results
 from .result_console import load_result_json, print_result
-from .runner import doctor, run_benchmark, synthesize_benchmark
+from .runner import doctor, run_benchmark
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,9 +22,9 @@ def build_parser() -> argparse.ArgumentParser:
     fixture_create.add_argument("--force", action="store_true")
 
     bench_parser = subparsers.add_parser("bench")
-    bench_subparsers = bench_parser.add_subparsers(dest="bench_command", required=True)
+    bench_subparsers = bench_parser.add_subparsers(dest="bench_command", required=True, metavar="COMMAND")
 
-    run_parser = bench_subparsers.add_parser("run")
+    run_parser = bench_subparsers.add_parser("run", help="Run a paid benchmark against a prepared fixture and AGENTS source.")
     run_parser.add_argument("--fixture", required=True, type=Path)
     agents_source = run_parser.add_mutually_exclusive_group(required=True)
     agents_source.add_argument("--agents-file", type=Path)
@@ -36,21 +36,16 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--keep-workdirs", action="store_true")
     run_parser.add_argument("--workspace-root", type=Path)
 
-    analyze_parser = bench_subparsers.add_parser("analyze")
+    analyze_parser = bench_subparsers.add_parser("analyze", help="Analyze an existing raw benchmark result folder.")
     analyze_parser.add_argument("--results", required=True, type=Path)
     analyze_parser.add_argument("--large-text-bytes", type=int, default=20_000)
 
-    synthesize_parser = bench_subparsers.add_parser("synthesize")
-    synthesize_parser.add_argument("--out", required=True, type=Path)
-    synthesize_parser.add_argument("--repeats", type=int, default=5)
-    synthesize_parser.add_argument("--seed", type=int)
-
-    summarize_parser = bench_subparsers.add_parser("summarize")
+    summarize_parser = bench_subparsers.add_parser("summarize", help="Summarize existing result.json reports without running Codex.")
     summarize_parser.add_argument("inputs", nargs="+", type=Path)
     summarize_parser.add_argument("--out", required=True, type=Path)
     summarize_parser.add_argument("--json", action="store_true", help="Print machine-readable output paths instead of the human summary.")
 
-    doctor_parser = bench_subparsers.add_parser("doctor")
+    doctor_parser = bench_subparsers.add_parser("doctor", help="Check local Tokenmessung/Codex prerequisites.")
     doctor_parser.add_argument("--require-api-key", action="store_true")
 
     result_parser = subparsers.add_parser("result")
@@ -83,10 +78,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "bench" and args.bench_command == "analyze":
         paths = analyze_results(args.results, large_text_bytes=args.large_text_bytes)
-        print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
-        return 0
-    if args.command == "bench" and args.bench_command == "synthesize":
-        paths = synthesize_benchmark(args.out, args.repeats, seed=args.seed)
         print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
         return 0
     if args.command == "bench" and args.bench_command == "summarize":

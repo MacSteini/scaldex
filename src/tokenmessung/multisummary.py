@@ -225,7 +225,7 @@ def plain_global_explanation(summary: dict[str, Any]) -> str:
         return "You have enough decision-grade task evidence to claim global token efficiency for this measured subject."
     blockers = set(summary.get("global_blockers", []))
     if "synthetic_results_only" in blockers or "synthetic_results_only" in set(summary.get("warnings", [])):
-        return "This is synthetic demo data. Use it to inspect the report format, not to claim real token efficiency."
+        return "This is synthetic Tokenmessung test data. Use it for development or CI checks only, not to claim real token efficiency."
     if any(str(blocker).startswith("decision_grade_tasks_incomplete:") for blocker in blockers):
         return "The summary does not yet contain decision-grade evidence for all expected tasks."
     if any(str(blocker).startswith("effective_decision_grade_tasks_below_threshold:") for blocker in blockers):
@@ -251,7 +251,7 @@ def yes_no(value: Any) -> str:
 
 
 def report_type_text(summary: dict[str, Any]) -> str:
-    return "DEMO DATA ONLY (synthetic results)" if "synthetic_results_only" in summary.get("warnings", []) else "real benchmark reports"
+    return "developer/CI synthetic fixture" if "synthetic_results_only" in summary.get("warnings", []) else "real benchmark reports"
 
 
 def format_multi_summary_console(summary: dict[str, Any], paths: dict[str, Path] | None = None) -> str:
@@ -260,9 +260,8 @@ def format_multi_summary_console(summary: dict[str, Any], paths: dict[str, Path]
         "=== Tokenmessung Summary ===",
         f"Report type: {report_type_text(summary)}",
         f"Can claim global efficiency: {yes_no(summary['global_token_efficiency_claim_allowed'])}",
-        f"Decision: {summary['global_decision']}",
         f"Why: {plain_global_explanation(summary)}",
-        f"Next step: {next_summary_action(summary)}",
+        f"What to do now: {next_summary_action(summary)}",
         "",
         "Evidence:",
         f"- Effective decision-grade tasks: {summary['effective_decision_grade_task_count']}/{GLOBAL_TASK_THRESHOLD} needed",
@@ -293,19 +292,19 @@ def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
         "",
         f"Why: {plain_global_explanation(summary)}",
         "",
-        f"Next step: {next_summary_action(summary)}",
+        f"What to do now: {next_summary_action(summary)}",
         "",
         "## What This Is",
         "",
         "This report combines existing `result.json` files. It does not run Codex and does not spend API money.",
         "",
         (
-            "This report uses synthetic demo data. It does not measure your `AGENTS.md`, your `.codex/` package, or any real Codex run."
+            "This report uses synthetic Tokenmessung test data. It does not measure your `AGENTS.md`, your `.codex/` package, or any real Codex run."
             if synthetic
             else "Use this summary to decide whether several task reports support a broader efficiency claim."
         ),
         "",
-        "Do not use synthetic demo data as efficiency evidence." if synthetic else "Use the decision below as release evidence only when the quality gates pass.",
+        "Do not use synthetic test data as efficiency evidence." if synthetic else "Use the decision below as release evidence only when the quality gates pass.",
         "",
         "## Decision",
         "",
@@ -315,7 +314,7 @@ def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
         "",
         f"Plain explanation: {plain_global_explanation(summary)}",
         "",
-        f"Next action: {next_summary_action(summary)}",
+        f"What to do now: {next_summary_action(summary)}",
         "",
         "## Evidence",
         "",

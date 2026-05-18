@@ -32,7 +32,9 @@ def build_parser() -> argparse.ArgumentParser:
             "Typical flow:\n"
             "  1. Put AGENTS.md and optional support files in subject/.\n"
             "  2. Run a low-cost smoke test: python3 run_tokenmessung.py --model gpt-5.4\n"
-            "  3. Replay an existing report without spending money: python3 run_tokenmessung.py --print-result tokenmessung-run/result.json\n\n"
+            "  3. Read the terminal lines 'What this means' and 'What to do now'.\n"
+            "  4. Run --repeats 3 only when the smoke result tells you to.\n"
+            "  5. Replay an existing report without spending money: python3 run_tokenmessung.py --print-result tokenmessung-run/result.json\n\n"
             "Tokenmessung never stores your Codex API key in generated reports. If CODEX_API_KEY is not already set,\n"
             "the tool asks for it at a hidden prompt for that process only."
         ),

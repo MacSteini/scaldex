@@ -168,7 +168,7 @@ class MultiSummaryTests(unittest.TestCase):
             self.assertIn("Can claim global efficiency:", report)
             self.assertIn("Global decision: **do_not_claim_global_efficiency**", report)
             self.assertIn("Plain explanation:", report)
-            self.assertIn("Next action:", report)
+            self.assertIn("What to do now:", report)
             self.assertIn("## Global Blockers", report)
             self.assertIn("decision_grade_tasks_incomplete:1/4", report)
             self.assertIn("login_test_failure", report)
@@ -181,9 +181,9 @@ class MultiSummaryTests(unittest.TestCase):
             summary = build_multi_summary([result_path])
             text = format_multi_summary_console(summary)
             self.assertIn("=== Tokenmessung Summary ===", text)
-            self.assertIn("DEMO DATA ONLY", text)
+            self.assertIn("developer/CI synthetic fixture", text)
             self.assertIn("not to claim real token efficiency", text)
-            self.assertIn("Next step:", text)
+            self.assertIn("What to do now:", text)
 
 
 if __name__ == "__main__":

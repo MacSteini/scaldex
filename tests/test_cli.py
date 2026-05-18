@@ -74,6 +74,17 @@ class CliTests(unittest.TestCase):
         with self.assertRaises(SystemExit), redirect_stdout(output), redirect_stderr(error):
             main(["bench", "run", "--fixture", "fixture", "--model", "model", "--out", "results"])
 
+    def test_bench_help_hides_synthetic_fixture_command(self) -> None:
+        output = io.StringIO()
+        error = io.StringIO()
+        with self.assertRaises(SystemExit) as ctx, redirect_stdout(output), redirect_stderr(error):
+            main(["bench", "--help"])
+        self.assertEqual(ctx.exception.code, 0)
+        help_text = output.getvalue()
+        self.assertIn("summarize", help_text)
+        self.assertNotIn("synthesize", help_text)
+        self.assertNotIn("synthetic", help_text.lower())
+
     def test_bench_run_rejects_conflicting_agents_sources(self) -> None:
         output = io.StringIO()
         error = io.StringIO()
@@ -150,6 +161,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("=== Tokenmessung Summary ===", text)
             self.assertIn("Can claim global efficiency:", text)
+            self.assertIn("What to do now:", text)
             self.assertIn("Human summary:", text)
 
     def test_bench_summarize_missing_input_exits_cleanly(self) -> None:
@@ -184,8 +196,40 @@ class CliTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("=== Tokenmessung Result ===", text)
             self.assertIn("Verdict: effective", text)
-            self.assertIn("Plain explanation:", text)
+            self.assertIn("What this means:", text)
+            self.assertIn("What to do now:", text)
             self.assertIn("Codex handoff:", text)
+
+    def test_result_show_prints_human_next_steps_for_all_actions(self) -> None:
+        cases = [
+            ("eligible_for_decision_run", "Run this same task with --repeats 3"),
+            ("stop_fix_quality_or_task_behavior", "Stop here. Fix the quality"),
+            ("record_decision_grade_win", "Keep this report as a decision-grade win"),
+            ("do_not_claim_efficiency", "Do not claim efficiency from this task"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            for index, (next_action, expected) in enumerate(cases):
+                result = base / f"result-{index}.json"
+                result.write_text(
+                    json.dumps(
+                        {
+                            "verdict": "effective",
+                            "primary_delta": {"agents_minus_control": -10, "percent": -10.0, "agents_median": 90, "control_median": 100},
+                            "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+                            "benchmark_warnings": [],
+                            "final_relevant_files": {"normalized_repo_relative_only": True},
+                            "reliability": {"level": "normal", "paired_runs": 3, "warnings": []},
+                            "subject": {"mode": "package", "source_file_count": 1, "total_bytes": 9, "warnings": []},
+                            "decision": {"next_action": next_action, "scope": "task", "explanation": "fixture explanation"},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                code, text = self.run_cli_text(["result", "show", str(result)])
+                self.assertEqual(code, 0)
+                self.assertIn("What to do now:", text)
+                self.assertIn(expected, text)
 
     def test_result_show_missing_result_exits_cleanly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

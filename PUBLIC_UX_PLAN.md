@@ -33,14 +33,13 @@
 | 7 | done | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behaviour. |
 | 8 | done | Add human-readable decision storyline. | Console, `RESULT.md`, `result.json`, and `CODEX_HANDOFF.md` explain the decision in plain language. | No verdict or benchmark math changes; fresh-agent handoff remains non-automatic. |
 | 9 | done | Add result replay for end users. | Users can show existing `result.json` files via `run_tokenmessung.py --print-result` and `tokenmessung result show`. | No API key, subject audit, run reset, or paid benchmark occurs in replay mode. |
+| 10 | done | Remove synthetic demo from end-user UX. | Public help and local user flow focus on real smoke runs, replay, and summaries. | Internal synthetic fixtures remain test-only; no measurement logic changed. |
 
 ## Verification After Each Step
 
 - `PYTHONPATH=src python3 -m unittest discover -s tests`
 - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py`
-- For report/analyzer changes:
-  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-synth-clean --repeats 2 --seed 1`
-  - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-synth-clean`
+- Internal fixture generation is covered by runner unit tests; it is not part of the public CLI flow.
 
 ## Audit Notes
 
@@ -64,7 +63,7 @@
   - Console output now includes `Next action`.
   - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
-  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-synth-clean --repeats 2 --seed 1` passed.
+  - Internal synthetic fixture generation was covered by runner unit tests.
   - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-synth-clean` passed.
 - Audit:
   - Unit tests cover `eligible_for_decision_run`, `stop_fix_quality_or_task_behavior`, `record_decision_grade_win`, and `do_not_claim_efficiency`.
@@ -79,7 +78,7 @@
   - The summary includes decision, next action, primary metric, quality gate, warnings, and global claim eligibility.
   - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
-  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-synth-clean --repeats 2 --seed 1` passed.
+  - Internal synthetic fixture generation was covered by runner unit tests.
   - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-synth-clean` passed.
 - Audit:
   - Decision Summary states variant medians are secondary context.
@@ -94,7 +93,7 @@
   - Summary writes `tokenmessung-summary.json` and `TOKENMESSUNG_SUMMARY.md`.
   - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
-  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-synth-clean --repeats 2 --seed 1` passed.
+  - Internal synthetic fixture generation was covered by runner unit tests.
   - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-synth-clean` passed.
   - `PYTHONPATH=src python3 -m tokenmessung bench summarize /private/tmp/tokenmessung-synth-clean --out /private/tmp/tokenmessung-multi-summary` passed.
 - Audit:
@@ -111,7 +110,7 @@
   - Analysis writes `CODEX_HANDOFF.md` for direct follow-up use in Codex.
   - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
-  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-product-ux-probe --repeats 2 --seed 1` passed.
+  - Internal synthetic fixture generation was covered by runner unit tests.
   - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-product-ux-probe` passed.
   - `PYTHONPATH=src python3 -m tokenmessung bench summarize /private/tmp/tokenmessung-product-ux-probe --out /private/tmp/tokenmessung-product-ux-summary` passed.
 - Audit:
@@ -165,7 +164,7 @@
   - Multi-task/result-set reports no longer describe the evidence as only "this task".
   - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
-  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-storyline-probe --repeats 2 --seed 1` passed.
+  - Internal synthetic fixture generation was covered by runner unit tests.
   - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-storyline-probe` passed.
   - `PYTHONPATH=src python3 -m tokenmessung bench summarize /private/tmp/tokenmessung-storyline-probe --out /private/tmp/tokenmessung-storyline-summary` passed.
   - `.codex/bin/validate` passed.
@@ -185,7 +184,7 @@
   - Replay requires no model, no API key, no subject directory, no fixture, and no run folder reset.
   - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
-  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-replay-probe --repeats 2 --seed 1` passed.
+  - Internal synthetic fixture generation was covered by runner unit tests.
   - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-replay-probe` passed.
   - `PYTHONPATH=src python3 -m tokenmessung bench summarize /private/tmp/tokenmessung-replay-probe --out /private/tmp/tokenmessung-replay-summary` passed.
   - `PYTHONPATH=src python3 -m tokenmessung result show /private/tmp/tokenmessung-replay-probe/result.json` passed.
@@ -194,6 +193,18 @@
   - Measurement math, verdicts, quality gates, and history archive structure remain unchanged.
   - Replay only reads existing run and history files.
   - Mixed replay/benchmark mode fails fast to avoid accidental paid-run expectations.
+
+### Step 10
+
+- Status: done
+- Measurement:
+  - `tokenmessung bench --help` no longer exposes synthetic fixture generation.
+  - `LOCAL_TEST.md` describes only the real enduser flow: prepare `subject/`, run a smoke test, read the terminal decision, replay existing reports, and summarize real reports.
+  - Console result output now uses `What this means` and `What to do now` instead of requiring users to interpret technical action codes.
+- Audit:
+  - Synthetic fixture generation remains available only as internal test support.
+  - Public help and local user guidance do not present synthetic data as a user feature.
+  - Verdict rules, paired metric calculations, and quality gates remain unchanged.
 
 ## Future Smart Runner Specification
 
