@@ -12,6 +12,8 @@
 - Console output tells the user the next safe action without requiring manual report interpretation.
 - `RESULT.md` starts with a compact decision summary before detailed metrics.
 - Existing result files from multiple runs can be summarized locally without new API calls.
+- Each result includes a Codex-ready handoff brief so users can feed the measurement into a follow-up agent.
+- Re-running the default root runner preserves compact previous reports for later summaries.
 - A future smart runner is specified but not implemented.
 - Public README/end-user documentation remains last.
 
@@ -23,8 +25,10 @@
 | 1 | done | Add console `Next action`. | Console says whether to stop, run decision-grade, record win, or reject efficiency. | Tests cover all action categories; decisions do not use unpaired medians. |
 | 2 | done | Add `RESULT.md` Decision Summary. | First report lines show decision, next action, quality gate, warnings, and claim status. | Benchmark and subject warnings remain separated; integrity failures stay not effective. |
 | 3 | done | Add local multi-task summary. | Existing `result.json` files can produce `TOKENMESSUNG_SUMMARY.md` and `tokenmessung-summary.json` without API calls. | Mixed fingerprints and mixed smoke/decision-grade inputs are explicit. |
-| 4 | done | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior and stop rules. | No auto-run implementation or paid-run trigger added. |
-| 5 | done | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behavior. |
+| 4 | done | Add decision reasons and Codex handoff. | Reports include `Reason`; analysis writes `CODEX_HANDOFF.md`. | Handoff repeats primary-metric and quality-gate rules; no optimisation is automatic. |
+| 5 | done | Preserve compact previous reports. | Default reruns archive compact reports before replacing `tokenmessung-run/`. | Archive excludes raw workspaces and secrets; summaries can use preserved `result.json`. |
+| 6 | done | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior and stop rules. | No auto-run implementation or paid-run trigger added. |
+| 7 | done | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behavior. |
 
 ## Verification After Each Step
 
@@ -98,6 +102,36 @@
 
 - Status: done
 - Measurement:
+  - `RESULT.md` Decision Summary now includes `Reason`.
+  - `result.json` decision data now includes a machine-readable `reason`.
+  - Analysis writes `CODEX_HANDOFF.md` for direct follow-up use in Codex.
+  - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
+  - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench synthesize --out /private/tmp/tokenmessung-product-ux-probe --repeats 2 --seed 1` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench analyze --results /private/tmp/tokenmessung-product-ux-probe` passed.
+  - `PYTHONPATH=src python3 -m tokenmessung bench summarize /private/tmp/tokenmessung-product-ux-probe --out /private/tmp/tokenmessung-product-ux-summary` passed.
+- Audit:
+  - Codex handoff states that paired median non-cached input delta is the primary decision metric.
+  - Handoff treats failed quality gates and benchmark warnings as blockers.
+  - Handoff does not trigger paid reruns or automatic optimisation.
+
+### Step 5
+
+- Status: done
+- Measurement:
+  - Root runner archives compact previous reports into `tokenmessung-history/` before replacing the default run folder.
+  - Archived compact reports include `RESULT.md`, `CODEX_HANDOFF.md`, `result.json`, `summary.csv`, `summary.json`, and `paired-deltas.csv` when present.
+  - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
+  - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
+- Audit:
+  - Archive excludes raw workspaces and raw Codex JSONL output.
+  - Archive preserves `result.json` files that `tokenmessung bench summarize` can consume later.
+  - Custom non-generated run folders remain protected from replacement.
+
+### Step 6
+
+- Status: done
+- Measurement:
   - Future `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behavior is specified below.
   - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
@@ -106,7 +140,7 @@
   - No paid-run automation was added.
   - The specification requires explicit approval before any future paid-run plan.
 
-### Step 5
+### Step 7
 
 - Status: done
 - Measurement:

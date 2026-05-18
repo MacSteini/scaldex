@@ -599,10 +599,25 @@ def decision_grade(result: dict[str, Any]) -> bool:
 def decision_summary(result: dict[str, Any]) -> dict[str, Any]:
     quality_ok = quality_gate_passed(result)
     is_decision_grade = decision_grade(result)
+    primary = result.get("primary_delta", {})
+    benchmark_warnings = result.get("benchmark_warnings", [])
+    primary_delta = number(primary.get("agents_minus_control")) if isinstance(primary, dict) else 0.0
     if is_decision_grade:
         next_action = "record_decision_grade_win" if result.get("verdict") == "effective" and quality_ok else "do_not_claim_efficiency"
     else:
         next_action = "eligible_for_decision_run" if quality_ok else "stop_fix_quality_or_task_behavior"
+    if not quality_ok:
+        reason = "quality_gate_failed"
+    elif not is_decision_grade:
+        reason = "smoke_passed_needs_decision_grade"
+    elif primary_delta < 0 and result.get("verdict") == "effective":
+        reason = "primary_delta_negative_quality_passed"
+    elif primary_delta >= 0:
+        reason = "primary_delta_non_negative"
+    elif benchmark_warnings:
+        reason = "secondary_or_integrity_warnings_present"
+    else:
+        reason = "decision_not_effective"
     return {
         "decision": {
             "eligible_for_decision_run": "smoke_passed",
@@ -611,6 +626,7 @@ def decision_summary(result: dict[str, Any]) -> dict[str, Any]:
             "do_not_claim_efficiency": "decision_grade_not_effective",
         }[next_action],
         "next_action": next_action,
+        "reason": reason,
         "quality_gate_passed": quality_ok,
         "decision_grade": is_decision_grade,
         "primary_metric_basis": "paired_median_non_cached_input_delta",
@@ -842,6 +858,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         "| --- | --- |",
         f"| Decision | {decision.get('decision', 'n/a') if isinstance(decision, dict) else 'n/a'} |",
         f"| Next action | {decision.get('next_action', 'n/a') if isinstance(decision, dict) else 'n/a'} |",
+        f"| Reason | {decision.get('reason', 'n/a') if isinstance(decision, dict) else 'n/a'} |",
         f"| Primary metric | {decision.get('primary_metric_basis', 'paired_median_non_cached_input_delta') if isinstance(decision, dict) else 'paired_median_non_cached_input_delta'} |",
         f"| Quality gate | {'passed' if isinstance(decision, dict) and decision.get('quality_gate_passed') else 'failed'} |",
         f"| Warnings | {format_warning_list(benchmark_warnings)} |",
@@ -952,6 +969,68 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def handoff_request(decision: dict[str, Any]) -> str:
+    next_action = decision.get("next_action")
+    if next_action == "eligible_for_decision_run":
+        return "Run a decision-grade measurement for this same task before making package optimisation claims."
+    if next_action == "stop_fix_quality_or_task_behavior":
+        return "Fix quality, expected-file, structured-output, or path issues before spending more runs on efficiency."
+    if next_action == "record_decision_grade_win":
+        return "Record this as a decision-grade win and combine it with other decision-grade task results before making a global claim."
+    if next_action == "do_not_claim_efficiency":
+        return "Do not claim efficiency for this task. If optimising the package, inspect task-specific behaviour and propose minimal changes before rerunning."
+    return "Inspect the report before choosing the next action."
+
+
+def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
+    primary = result.get("primary_delta", {})
+    quality = result.get("quality", {})
+    final_relevant = result.get("final_relevant_files", {})
+    decision = result.get("decision", {})
+    reliability = result.get("reliability", {})
+    integrity = result.get("integrity", {})
+    context = result.get("context", {})
+    benchmark_warnings = result.get("benchmark_warnings", [])
+    subject = result.get("subject", {})
+    task_ids = context.get("task_ids", []) if isinstance(context, dict) else []
+    task_text = ", ".join(str(task_id) for task_id in task_ids) if task_ids else "unknown"
+    lines = [
+        "# Tokenmessung Codex Handoff",
+        "",
+        "Paste this brief into Codex when you want a follow-up agent to act on this measurement.",
+        "",
+        "## Measurement Decision",
+        "",
+        f"- Task(s): `{task_text}`",
+        f"- Verdict: `{result.get('verdict', 'unknown')}`",
+        f"- Decision: `{decision.get('decision', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
+        f"- Next action: `{decision.get('next_action', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
+        f"- Reason: `{decision.get('reason', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
+        f"- Primary metric: `{decision.get('primary_metric_basis', 'paired_median_non_cached_input_delta') if isinstance(decision, dict) else 'paired_median_non_cached_input_delta'}`",
+        f"- Paired median non-cached input delta: {format_number(primary.get('agents_minus_control', 0) if isinstance(primary, dict) else 0)} ({format_percent(primary.get('percent') if isinstance(primary, dict) else None)})",
+        f"- Quality: agents {quality.get('agents_success_rate', 'n/a') if isinstance(quality, dict) else 'n/a'} / control {quality.get('control_success_rate', 'n/a') if isinstance(quality, dict) else 'n/a'}",
+        f"- Paired runs: {format_number(reliability.get('paired_runs', 0) if isinstance(reliability, dict) else 0)}",
+        f"- Normalized repo-relative relevant files: {final_relevant.get('normalized_repo_relative_only', False) if isinstance(final_relevant, dict) else False}",
+        f"- Benchmark warnings: {format_warning_list(benchmark_warnings)}",
+        f"- Subject fingerprint: `{integrity.get('subject_fingerprint', 'n/a') if isinstance(integrity, dict) else 'n/a'}`",
+        f"- Run config fingerprint: `{integrity.get('run_config_fingerprint', 'n/a') if isinstance(integrity, dict) else 'n/a'}`",
+        f"- Subject size: {human_bytes(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} across {format_number(subject.get('source_file_count', 0) if isinstance(subject, dict) else 0)} files",
+        "",
+        "## Interpretation Rules",
+        "",
+        "- Use the paired median non-cached input delta as the primary decision metric.",
+        "- Treat variant medians as secondary context only.",
+        "- Treat failed quality gates, missing expected files, invalid final JSON, missing usage data, or benchmark warnings as blockers.",
+        "- Do not make a global token-efficiency claim from a single task.",
+        "- Do not rerun paid benchmarks until the next action is clear.",
+        "",
+        "## Follow-up Request",
+        "",
+        handoff_request(decision if isinstance(decision, dict) else {}),
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def analyze_results(results: Path, large_text_bytes: int = LARGE_TEXT_BYTES, output_dir: Path | None = None) -> dict[str, Path]:
     rows = [parse_run(meta.parent, large_text_bytes=large_text_bytes) for meta in sorted(results.glob("*/meta.json"))]
     if not rows:
@@ -971,6 +1050,7 @@ def analyze_results(results: Path, large_text_bytes: int = LARGE_TEXT_BYTES, out
     deltas_csv = output / "paired-deltas.csv"
     result_json = output / "result.json"
     result_md = output / "RESULT.md"
+    codex_handoff_md = output / "CODEX_HANDOFF.md"
     write_csv(summary_csv, rows)
     summary_json.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if deltas:
@@ -984,13 +1064,16 @@ def analyze_results(results: Path, large_text_bytes: int = LARGE_TEXT_BYTES, out
         "summary_json": str(summary_json),
         "paired_deltas_csv": str(deltas_csv),
         "raw_results_dir": str(results),
+        "codex_handoff_md": str(codex_handoff_md),
     }
     result_json.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_result_markdown(result_md, result)
+    write_codex_handoff_markdown(codex_handoff_md, result)
     return {
         "summary_csv": summary_csv,
         "summary_json": summary_json,
         "paired_deltas_csv": deltas_csv,
         "result_json": result_json,
         "result_md": result_md,
+        "codex_handoff_md": codex_handoff_md,
     }
