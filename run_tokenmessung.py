@@ -46,7 +46,7 @@ def status(message: str) -> None:
 def ensure_api_key() -> str:
     if os.environ.get("CODEX_API_KEY"):
         return "env"
-    key = getpass.getpass("[tokenmessung] CODEX_API_KEY: ")
+    key = getpass.getpass("[tokenmessung] Enter Codex API Key: ")
     if not key:
         raise SystemExit("CODEX_API_KEY is required.")
     os.environ["CODEX_API_KEY"] = key

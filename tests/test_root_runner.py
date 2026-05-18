@@ -212,7 +212,7 @@ class RootRunnerTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True), patch.object(module.getpass, "getpass", return_value="sk-test-secret") as getpass_mock:
             self.assertEqual(module.ensure_api_key(), "prompt")
             self.assertEqual(os.environ.get("CODEX_API_KEY"), "sk-test-secret")
-        getpass_mock.assert_called_once_with("[tokenmessung] CODEX_API_KEY: ")
+        getpass_mock.assert_called_once_with("[tokenmessung] Enter Codex API Key: ")
 
     def test_refuses_run_dir_that_would_delete_subject(self) -> None:
         module = load_root_runner()

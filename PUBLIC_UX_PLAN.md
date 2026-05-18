@@ -5,18 +5,18 @@
 - Tokenmessung has a working measurement core: paired agents/control runs, batch IDs, subject fingerprints, run configuration fingerprints, quality gates, normalized repo-relative `relevant_files`, and paired median non-cached input deltas.
 - The current user experience is no longer just raw metrics, but the decision narrative still needs to be explicit enough for a first-time user or fresh Codex agent.
 - End-user documentation is intentionally deferred until the operational UX is stable.
-- No paid Codex benchmark runs are allowed during this implementation sequence unless explicitly approved later.
+- Do not run paid Codex benchmarks during this sequence unless the user approves them later.
 
 ## Target State
 
 - Console output tells the user the next safe action without requiring manual report interpretation.
 - `RESULT.md` starts with a compact decision summary before detailed metrics.
-- Existing result files from multiple runs can be summarized locally without new API calls.
+- Existing result files from a run set can produce a local summary without new API calls.
 - Each result includes a Codex-ready handoff brief so users can feed the measurement into a follow-up agent.
 - Each decision explains what happened, why it matters, and what the next action should be.
-- Existing `result.json` files can be replayed as console decisions without new paid runs.
+- Existing `result.json` files can print console decisions again without new paid runs.
 - Re-running the default root runner preserves compact previous reports for later summaries.
-- A future smart runner is specified but not implemented.
+- This plan specifies a future smart runner but does not build it yet.
 - Public README/end-user documentation remains last.
 
 ## Sequential Checklist
@@ -24,7 +24,7 @@
 | Step | Status | Goal | Success Measurement | Audit |
 | --- | --- | --- | --- | --- |
 | 0 | done | Create this root plan. | `PUBLIC_UX_PLAN.md` exists and lists all steps. | No secrets, no private benchmark artefacts, no measurement logic changes. |
-| 1 | done | Add console `Next action`. | Console says whether to stop, run decision-grade, record win, or reject efficiency. | Tests cover all action categories; decisions do not use unpaired medians. |
+| 1 | done | Add console `Next action`. | Console prints whether to stop, run decision-grade, record win, or reject efficiency. | Tests cover all action categories; decisions do not use unpaired medians. |
 | 2 | done | Add `RESULT.md` Decision Summary. | First report lines show decision, next action, quality gate, warnings, and claim status. | Benchmark and subject warnings remain separated; integrity failures stay not effective. |
 | 3 | done | Add local multi-task summary. | Existing `result.json` files can produce `TOKENMESSUNG_SUMMARY.md` and `tokenmessung-summary.json` without API calls. | Mixed fingerprints and mixed smoke/decision-grade inputs are explicit. |
 | 4 | done | Add decision reasons and Codex handoff. | Reports include `Reason`; analysis writes `CODEX_HANDOFF.md`. | Handoff repeats primary-metric and quality-gate rules; no optimisation is automatic. |
@@ -32,7 +32,7 @@
 | 6 | done | Specify future smart runner only. | Root plan contains `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behaviour and stop rules. | No auto-run implementation or paid-run trigger added. |
 | 7 | done | Defer end-user documentation. | README is not created until operational UX is stable. | Later README examples must match final CLI behaviour. |
 | 8 | done | Add human-readable decision storyline. | Console, `RESULT.md`, `result.json`, and `CODEX_HANDOFF.md` explain the decision in plain language. | No verdict or benchmark math changes; fresh-agent handoff remains non-automatic. |
-| 9 | done | Add result replay for end users. | Existing `result.json` files can be shown via `run_tokenmessung.py --print-result` and `tokenmessung result show`. | No API key, subject audit, run reset, or paid benchmark occurs in replay mode. |
+| 9 | done | Add result replay for end users. | Users can show existing `result.json` files via `run_tokenmessung.py --print-result` and `tokenmessung result show`. | No API key, subject audit, run reset, or paid benchmark occurs in replay mode. |
 
 ## Verification After Each Step
 
@@ -53,8 +53,8 @@
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
 - Audit:
   - Measurement code was not modified.
-  - No README was added.
-  - No API keys, local secrets, or raw benchmark artefacts were added.
+  - The change did not add a README.
+  - The change did not add API keys, local secrets, or raw benchmark artefacts.
 
 ### Step 1
 
@@ -136,19 +136,19 @@
 
 - Status: done
 - Measurement:
-  - Future `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behaviour is specified below.
+  - The section below specifies future `tokenmessung evaluate --subject-dir ... --model ... --budget-runs ...` behaviour.
   - `PYTHONPATH=src python3 -m unittest discover -s tests` passed.
   - `python3 -m py_compile run_tokenmessung.py src/tokenmessung/*.py tests/*.py` passed.
 - Audit:
-  - No `evaluate` command was implemented.
-  - No paid-run automation was added.
+  - The change did not build an `evaluate` command.
+  - The change did not add paid-run automation.
   - The specification requires explicit approval before any future paid-run plan.
 
 ### Step 7
 
 - Status: done
 - Measurement:
-  - No README was created.
+  - The change did not create a README.
   - `LOCAL_TEST.md` remains the only short local reference.
 - Audit:
   - End-user documentation remains deferred until the operational UX is stable.
@@ -192,8 +192,8 @@
   - `python3 run_tokenmessung.py --print-result /private/tmp/tokenmessung-replay-probe/result.json` passed.
 - Audit:
   - Measurement math, verdicts, quality gates, and history archive structure remain unchanged.
-  - Replay is read-only for existing run and history files.
-  - Mixed replay/benchmark mode is rejected to avoid accidental paid-run expectations.
+  - Replay only reads existing run and history files.
+  - Mixed replay/benchmark mode fails fast to avoid accidental paid-run expectations.
 
 ## Future Smart Runner Specification
 
@@ -207,19 +207,19 @@
 tokenmessung evaluate --subject-dir ./Agent --model gpt-5.4 --budget-runs 12
 ```
 
-### Required Behavior
+### Required Behaviour
 
 - Resolve and audit the subject once before any paid run.
-- Display the maximum possible paid run count before starting.
+- Display the highest possible paid run count before starting.
 - Run every configured task first with `repeats=1`.
 - Stop a task after smoke when:
   - agents/control quality is not 1.0/1.0,
   - benchmark warnings are present,
   - normalized repo-relative `relevant_files` is false,
-  - integrity status is failed.
+  - integrity status fails.
 - Run `repeats=3` only for smoke-passing tasks and only while `--budget-runs` still allows it.
 - Never claim global token efficiency unless the multi-task summary rule allows it.
-- Persist every per-task `result.json` in a non-overwriting run folder so `bench summarize` can evaluate all tasks afterward.
+- Persist every per-task `result.json` in a non-overwriting run folder so `bench summarize` can assess all tasks afterward.
 
 ### Required Stop Rules
 
@@ -231,10 +231,10 @@ tokenmessung evaluate --subject-dir ./Agent --model gpt-5.4 --budget-runs 12
 
 ### Non-Goals
 
-- Do not implement automatic AGENTS.md optimization.
+- Do not build automatic AGENTS.md optimization.
 - Do not integrate CodeBurn or any external cost dashboard.
 - Do not hide raw path violations; normalized quality and raw path reporting must both remain visible.
-- Do not replace `run_tokenmessung.py` until the evaluate command is proven by local tests and explicit approval.
+- Do not replace `run_tokenmessung.py` until local tests and explicit approval prove the future command.
 
 ## Documentation Policy
 
