@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tokenmessung.analyzer import analyze_results, build_result, decision_summary, human_bytes, paired_deltas, parse_run
+from tokenmessung.analyzer import analyze_results, build_result, decision_summary, human_bytes, paired_deltas, parse_run, write_codex_handoff_markdown
 
 
 def write_run(
@@ -106,6 +106,54 @@ def write_run(
 
 
 class AnalyzerTests(unittest.TestCase):
+    def test_codex_handoff_contract_covers_all_next_actions(self) -> None:
+        cases = [
+            ("eligible_for_decision_run", "Tell the user to run this decision-grade command", "Do not optimize AGENTS.md/.codex yet"),
+            ("stop_fix_quality_or_task_behavior", "Analyze the quality, expected-file", "Do not treat token reductions as wins"),
+            ("record_decision_grade_win", "Record this report as decision-grade evidence", "Do not make a global efficiency claim"),
+            ("do_not_claim_efficiency", "Analyze task-specific behaviour", "Do not claim token efficiency"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            for next_action, requested, forbidden in cases:
+                result = {
+                    "verdict": "effective",
+                    "primary_delta": {"agents_minus_control": -10, "percent": -10.0},
+                    "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+                    "final_relevant_files": {"repo_relative_only": True, "normalized_repo_relative_only": True},
+                    "decision": {
+                        "decision": "fixture",
+                        "next_action": next_action,
+                        "reason": "fixture_reason",
+                        "explanation": "fixture explanation",
+                        "decision_grade": next_action in ("record_decision_grade_win", "do_not_claim_efficiency"),
+                        "quality_gate_passed": next_action != "stop_fix_quality_or_task_behavior",
+                        "global_claim_eligibility": "single-task only / not enough evidence",
+                    },
+                    "reliability": {"paired_runs": 3 if next_action in ("record_decision_grade_win", "do_not_claim_efficiency") else 1},
+                    "integrity": {"subject_fingerprint": "subject", "run_config_fingerprint": "config", "batch_id": "batch"},
+                    "context": {"task_ids": ["login_test_failure"]},
+                    "benchmark_warnings": [] if next_action != "stop_fix_quality_or_task_behavior" else ["missing_expected_files"],
+                    "subject": {"total_bytes": 10, "source_file_count": 1},
+                    "run_config": {"model": "gpt-test", "subject_dir": "subject", "task_ids": ["login_test_failure"], "subject_mode": "package"},
+                }
+                path = base / f"{next_action}.md"
+                write_codex_handoff_markdown(path, result)
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("# Tokenmessung Codex Instruction", text)
+                self.assertIn("Role: You are Codex analyzing a Tokenmessung benchmark result.", text)
+                self.assertIn("## Requested Action", text)
+                self.assertIn(requested, text)
+                self.assertIn("## Primary Metric", text)
+                self.assertIn("paired_median_non_cached_input_delta", text)
+                self.assertIn("variant medians are secondary context only", text)
+                self.assertIn("## Quality Gates", text)
+                self.assertIn("## Allowed Actions", text)
+                self.assertIn("## Forbidden Actions", text)
+                self.assertIn(forbidden, text)
+                self.assertIn("## Files To Inspect Next", text)
+                self.assertIn("## Output Expected From Codex", text)
+
     def test_parse_run_extracts_usage_and_context_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -175,15 +223,23 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("## Integrity", result_md)
             self.assertIn("Aggregated command output counted: True", result_md)
             handoff_md = paths["codex_handoff_md"].read_text(encoding="utf-8")
-            self.assertIn("# Tokenmessung Codex Handoff", handoff_md)
-            self.assertIn("## Measurement Decision", handoff_md)
-            self.assertIn("- Next action: `eligible_for_decision_run`", handoff_md)
+            self.assertIn("# Tokenmessung Codex Instruction", handoff_md)
+            self.assertIn("Role: You are Codex analyzing a Tokenmessung benchmark result.", handoff_md)
+            self.assertIn("## Requested Action", handoff_md)
+            self.assertIn("## Decision Status", handoff_md)
+            self.assertIn("- Next action code: `eligible_for_decision_run`", handoff_md)
             self.assertIn("- Reason: `smoke_passed_needs_decision_grade`", handoff_md)
             self.assertIn("- Explanation: This smoke run is clean", handoff_md)
-            self.assertIn("## Human Reading", handoff_md)
-            self.assertIn("- What happened: This smoke run is clean", handoff_md)
-            self.assertIn("use `tokenmessung bench summarize`", handoff_md)
-            self.assertIn("Use the paired median non-cached input delta", handoff_md)
+            self.assertIn("## Primary Metric", handoff_md)
+            self.assertIn("- Primary metric: `paired_median_non_cached_input_delta`", handoff_md)
+            self.assertIn("variant medians are secondary context only", handoff_md)
+            self.assertIn("## Quality Gates", handoff_md)
+            self.assertIn("- Quality gate: `passed`", handoff_md)
+            self.assertIn("## Allowed Actions", handoff_md)
+            self.assertIn("## Forbidden Actions", handoff_md)
+            self.assertIn("Do not optimize AGENTS.md/.codex yet", handoff_md)
+            self.assertIn("## Files To Inspect Next", handoff_md)
+            self.assertIn("## Output Expected From Codex", handoff_md)
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
             deltas = paired_deltas(rows)
             self.assertEqual(deltas[0]["delta_non_cached_input_tokens_agents_minus_control"], -300)

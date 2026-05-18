@@ -34,6 +34,7 @@
 | 8 | done | Add human-readable decision storyline. | Console, `RESULT.md`, `result.json`, and `CODEX_HANDOFF.md` explain the decision in plain language. | No verdict or benchmark math changes; fresh-agent handoff remains non-automatic. |
 | 9 | done | Add result replay for end users. | Users can show existing `result.json` files via `run_tokenmessung.py --print-result` and `tokenmessung result show`. | No API key, subject audit, run reset, or paid benchmark occurs in replay mode. |
 | 10 | done | Remove synthetic demo from end-user UX. | Public help and local user flow focus on real smoke runs, replay, and summaries. | Internal synthetic fixtures remain test-only; no measurement logic changed. |
+| 11 | done | Add Codex-first output contract. | CLI and `CODEX_HANDOFF.md` tell Codex exactly what to do and what not to claim. | Human report remains readable; no measurement logic changed. |
 
 ## Verification After Each Step
 
@@ -205,6 +206,18 @@
   - Synthetic fixture generation remains available only as internal test support.
   - Public help and local user guidance do not present synthetic data as a user feature.
   - Verdict rules, paired metric calculations, and quality gates remain unchanged.
+
+### Step 11
+
+- Status: done
+- Measurement:
+  - Console output now includes `Codex instruction`, `Give this to Codex`, `Codex should`, and `Codex must not`.
+  - `CODEX_HANDOFF.md` now starts as `Tokenmessung Codex Instruction` and gives Codex a requested action, evidence grade, primary metric, quality gates, allowed actions, forbidden actions, files to inspect, and expected output.
+  - Replay prefers local sibling report files next to the loaded `result.json`, so archived handoff files are safe to pass to Codex.
+- Audit:
+  - Smoke results forbid optimisation and global efficiency claims.
+  - Quality blockers remain blockers even when token deltas look good.
+  - Variant medians remain secondary context and are not used as the decision metric.
 
 ## Future Smart Runner Specification
 

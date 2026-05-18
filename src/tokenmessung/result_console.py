@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .analyzer import decision_summary, explain_warning, human_bytes
+from .analyzer import codex_forbidden_action, codex_requested_action, decision_summary, explain_warning, human_bytes
 
 
 def format_delta(value: object) -> str:
@@ -32,6 +32,32 @@ def load_result_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+ARTIFACT_FILENAMES = {
+    "result_md": "RESULT.md",
+    "result_json": "result.json",
+    "codex_handoff_md": "CODEX_HANDOFF.md",
+    "summary_csv": "summary.csv",
+    "summary_json": "summary.json",
+    "paired_deltas_csv": "paired-deltas.csv",
+}
+
+
+def artifact_path(result: dict[str, object], key: str, result_dir: Path | None = None) -> str | None:
+    filename = ARTIFACT_FILENAMES.get(key)
+    if result_dir is not None and filename:
+        sibling = result_dir / filename
+        if sibling.is_file():
+            return str(sibling)
+    artifacts = result.get("artifacts", {})
+    if isinstance(artifacts, dict):
+        raw = artifacts.get(key)
+        if isinstance(raw, str) and raw:
+            return raw
+    if result_dir is not None and filename:
+        return str(result_dir / filename)
+    return None
+
+
 def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
     if synthetic:
         return "Use this only for Tokenmessung development or CI checks. It does not measure your AGENTS.md or .codex package."
@@ -39,22 +65,22 @@ def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
     scope = decision.get("scope", "task")
     if next_action == "eligible_for_decision_run":
         if scope == "result_set":
-            return "Run the same task set with --repeats 3 before trusting the result as decision-grade evidence."
-        return "Run this same task with --repeats 3 before trusting the result as decision-grade evidence."
+            return "Give the Codex handoff to Codex, or run the same task set with --repeats 3 before trusting the result."
+        return "Give the Codex handoff to Codex, or run this same task with --repeats 3 before trusting the result."
     if next_action == "stop_fix_quality_or_task_behavior":
-        return "Stop here. Fix the quality, expected-file, structured-output, warning, or path issue before spending more money."
+        return "Give the Codex handoff to Codex to fix quality, expected-file, structured-output, warning, or path issues before spending more money."
     if next_action == "record_decision_grade_win":
         if scope == "result_set":
-            return "Keep this as decision-grade evidence, then summarize all decision-grade task reports before making a global claim."
-        return "Keep this report as a decision-grade win, then compare it with other decision-grade task reports before making a global claim."
+            return "Give the Codex handoff to Codex to record this evidence and check global claim eligibility."
+        return "Give the Codex handoff to Codex to compare this win with other decision-grade task reports before making a global claim."
     if next_action == "do_not_claim_efficiency":
         if scope == "result_set":
-            return "Do not claim efficiency from this result set. Inspect the task-level reports before changing the package or rerunning paid tests."
-        return "Do not claim efficiency from this task. Inspect the task behavior before changing the package or rerunning paid tests."
+            return "Give the Codex handoff to Codex to inspect task-level behaviour before changing the package or rerunning paid tests."
+        return "Give the Codex handoff to Codex to inspect task behaviour before changing the package or rerunning paid tests."
     return "Inspect the report before deciding whether another paid run is justified."
 
 
-def print_result(result: dict[str, object], *, compare_history_command: str | None = None) -> None:
+def print_result(result: dict[str, object], *, compare_history_command: str | None = None, result_dir: Path | None = None) -> None:
     primary = result.get("primary_delta", {})
     quality = result.get("quality", {})
     benchmark_warnings = result.get("benchmark_warnings", result.get("warnings", []))
@@ -67,6 +93,7 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     decision = result.get("decision", {})
     if not isinstance(decision, dict) or not decision:
         decision = decision_summary(result)
+        result["decision"] = decision
     synthetic = isinstance(subject, dict) and subject.get("mode") == "synthetic"
     display_explanation = (
         "This is synthetic Tokenmessung test data. It is useful for development checks only, not as real benchmark evidence."
@@ -80,6 +107,14 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     print(f"Verdict: {result.get('verdict', 'unknown')}")
     print(f"What this means: {display_explanation}")
     print(f"What to do now: {what_to_do_now(decision, synthetic=synthetic)}")
+    codex_handoff = artifact_path(result, "codex_handoff_md", result_dir)
+    print("Codex instruction:")
+    if codex_handoff:
+        print(f"Give this to Codex: {codex_handoff}")
+    else:
+        print("Give this to Codex: CODEX_HANDOFF.md was not found beside this result.")
+    print(f"Codex should: {codex_requested_action(result)}")
+    print(f"Codex must not: {codex_forbidden_action(result)}")
     isolation = result.get("isolation", {})
     if isinstance(isolation, dict):
         print(f"Isolation: ~/.codex excluded = {isolation.get('home_codex_excluded', False)}")
@@ -129,11 +164,11 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
         subject_warnings = subject.get("warnings", [])
         if subject_warnings:
             print(f"Subject notes: {len(subject_warnings)} note(s); see RESULT.md for details.")
-    if isinstance(artifacts, dict):
-        print(f"Human report: {artifacts.get('result_md')}")
-        print(f"Machine report: {artifacts.get('result_json')}")
-        if artifacts.get("codex_handoff_md"):
-            print(f"Codex handoff: {artifacts.get('codex_handoff_md')}")
+    print("Report files:")
+    print(f"- Human report: {artifact_path(result, 'result_md', result_dir)}")
+    print(f"- Machine report: {artifact_path(result, 'result_json', result_dir)}")
+    if codex_handoff:
+        print(f"- Codex handoff: {codex_handoff}")
     if compare_history_command:
         print(f"Compare history: {compare_history_command}")
     print()

@@ -78,8 +78,8 @@ def write_fake_outputs(root: Path) -> dict[str, Path]:
     result_md = run_dir / "RESULT.md"
     result_md.write_text("# Tokenmessung Result\n", encoding="utf-8")
     handoff_md = run_dir / "CODEX_HANDOFF.md"
-    handoff_md.write_text("# Tokenmessung Codex Handoff\n", encoding="utf-8")
-    return {"summary_json": summary, "summary_csv": summary_csv, "paired_deltas_csv": deltas, "result_json": result_json, "result_md": result_md}
+    handoff_md.write_text("# Tokenmessung Codex Instruction\n", encoding="utf-8")
+    return {"summary_json": summary, "summary_csv": summary_csv, "paired_deltas_csv": deltas, "result_json": result_json, "result_md": result_md, "codex_handoff_md": handoff_md}
 
 
 class RootRunnerTests(unittest.TestCase):
@@ -88,6 +88,8 @@ class RootRunnerTests(unittest.TestCase):
         help_text = module.build_parser().format_help()
         self.assertIn("Typical flow:", help_text)
         self.assertIn("--print-result tokenmessung-run/result.json", help_text)
+        self.assertIn("CODEX_HANDOFF.md", help_text)
+        self.assertIn("Give tokenmessung-run/CODEX_HANDOFF.md to Codex", help_text)
         self.assertIn("never stores your Codex API key", help_text)
         self.assertIn("What this means", help_text)
         self.assertIn("What to do now", help_text)
@@ -119,6 +121,10 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Verdict: effective", output.getvalue())
             self.assertIn("What this means:", output.getvalue())
             self.assertIn("What to do now:", output.getvalue())
+            self.assertIn("Codex instruction:", output.getvalue())
+            self.assertIn("Give this to Codex:", output.getvalue())
+            self.assertIn("Codex should:", output.getvalue())
+            self.assertIn("Codex must not:", output.getvalue())
             self.assertIn("Human report:", output.getvalue())
             self.assertIn("Codex handoff:", output.getvalue())
 
@@ -208,6 +214,10 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Reliability: low (1 paired run(s))", output.getvalue())
             self.assertIn("What to do now:", output.getvalue())
             self.assertIn("What this means:", output.getvalue())
+            self.assertIn("Codex instruction:", output.getvalue())
+            self.assertIn("Give this to Codex:", output.getvalue())
+            self.assertIn("Codex should:", output.getvalue())
+            self.assertIn("Codex must not:", output.getvalue())
             self.assertIn("Tool sanity: schema v1", output.getvalue())
             self.assertIn("Codex handoff:", output.getvalue())
             self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())

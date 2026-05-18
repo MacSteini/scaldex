@@ -198,14 +198,17 @@ class CliTests(unittest.TestCase):
             self.assertIn("Verdict: effective", text)
             self.assertIn("What this means:", text)
             self.assertIn("What to do now:", text)
-            self.assertIn("Codex handoff:", text)
+            self.assertIn("Codex instruction:", text)
+            self.assertIn("Give this to Codex:", text)
+            self.assertIn("Codex should:", text)
+            self.assertIn("Codex must not:", text)
 
     def test_result_show_prints_human_next_steps_for_all_actions(self) -> None:
         cases = [
-            ("eligible_for_decision_run", "Run this same task with --repeats 3"),
-            ("stop_fix_quality_or_task_behavior", "Stop here. Fix the quality"),
-            ("record_decision_grade_win", "Keep this report as a decision-grade win"),
-            ("do_not_claim_efficiency", "Do not claim efficiency from this task"),
+            ("eligible_for_decision_run", "Give the Codex handoff to Codex, or run this same task with --repeats 3"),
+            ("stop_fix_quality_or_task_behavior", "Give the Codex handoff to Codex to fix quality"),
+            ("record_decision_grade_win", "Give the Codex handoff to Codex to compare this win"),
+            ("do_not_claim_efficiency", "Give the Codex handoff to Codex to inspect task behaviour"),
         ]
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -230,6 +233,40 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(code, 0)
                 self.assertIn("What to do now:", text)
                 self.assertIn(expected, text)
+                self.assertIn("Codex should:", text)
+                self.assertIn("Codex must not:", text)
+
+    def test_result_show_prefers_local_handoff_sibling_over_stale_artifact_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            result = base / "history" / "result.json"
+            local_handoff = result.parent / "CODEX_HANDOFF.md"
+            local_report = result.parent / "RESULT.md"
+            result.parent.mkdir()
+            local_handoff.write_text("# Tokenmessung Codex Instruction\n", encoding="utf-8")
+            local_report.write_text("# Tokenmessung Result\n", encoding="utf-8")
+            stale_handoff = base / "old" / "CODEX_HANDOFF.md"
+            result.write_text(
+                json.dumps(
+                    {
+                        "verdict": "effective",
+                        "primary_delta": {"agents_minus_control": -10, "percent": -10.0, "agents_median": 90, "control_median": 100},
+                        "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+                        "benchmark_warnings": [],
+                        "final_relevant_files": {"normalized_repo_relative_only": True},
+                        "reliability": {"level": "low", "paired_runs": 1, "warnings": ["low_sample_size"]},
+                        "subject": {"mode": "package", "source_file_count": 1, "total_bytes": 9, "warnings": []},
+                        "decision": {"next_action": "eligible_for_decision_run", "scope": "task", "explanation": "fixture explanation"},
+                        "artifacts": {"codex_handoff_md": str(stale_handoff), "result_md": str(base / "old" / "RESULT.md"), "result_json": str(base / "old" / "result.json")},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            code, text = self.run_cli_text(["result", "show", str(result)])
+            self.assertEqual(code, 0)
+            self.assertIn(f"Give this to Codex: {local_handoff.resolve()}", text)
+            self.assertIn(f"- Human report: {local_report.resolve()}", text)
+            self.assertNotIn(str(stale_handoff), text)
 
     def test_result_show_missing_result_exits_cleanly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

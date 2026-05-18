@@ -15,7 +15,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
 from tokenmessung.fixture import create_fixture  # noqa: E402
-from tokenmessung.analyzer import TOOL_SANITY, explain_warning, human_bytes  # noqa: E402
+from tokenmessung.analyzer import TOOL_SANITY, explain_warning, human_bytes, write_codex_handoff_markdown  # noqa: E402
 from tokenmessung.result_console import load_result_json, print_result  # noqa: E402
 from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, new_batch_id, run_benchmark  # noqa: E402
 from tokenmessung.schemas import TASKS  # noqa: E402
@@ -32,9 +32,10 @@ def build_parser() -> argparse.ArgumentParser:
             "Typical flow:\n"
             "  1. Put AGENTS.md and optional support files in subject/.\n"
             "  2. Run a low-cost smoke test: python3 run_tokenmessung.py --model gpt-5.4\n"
-            "  3. Read the terminal lines 'What this means' and 'What to do now'.\n"
-            "  4. Run --repeats 3 only when the smoke result tells you to.\n"
-            "  5. Replay an existing report without spending money: python3 run_tokenmessung.py --print-result tokenmessung-run/result.json\n\n"
+            "  3. Give tokenmessung-run/CODEX_HANDOFF.md to Codex for the next action.\n"
+            "  4. Read 'What this means' and 'What to do now' as the human control layer.\n"
+            "  5. Run --repeats 3 only when the handoff or terminal output tells you to.\n"
+            "  6. Replay an existing report without spending money: python3 run_tokenmessung.py --print-result tokenmessung-run/result.json\n\n"
             "Tokenmessung never stores your Codex API key in generated reports. If CODEX_API_KEY is not already set,\n"
             "the tool asks for it at a hidden prompt for that process only."
         ),
@@ -197,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         result = load_result_json(result_path)
         run_dir = result_path.parent
         history_dir = (root / args.history_dir).resolve()
-        print_result(result, compare_history_command=history_compare_command(root, run_dir, history_dir))
+        print_result(result, compare_history_command=history_compare_command(root, run_dir, history_dir), result_dir=run_dir)
         return 0
     if not args.model:
         raise SystemExit("--model is required unless --print-result is used.")
@@ -298,8 +299,9 @@ def main(argv: list[str] | None = None) -> int:
     }
     result["artifacts"]["raw_dir"] = str(raw_dir)
     outputs["result_json"].write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_codex_handoff_markdown(outputs["codex_handoff_md"], result)
     status(f"Report ready after {round(time.monotonic() - started, 1)}s: {outputs['result_md']}")
-    print_result(result, compare_history_command=history_compare_command(root, run_dir, history_dir) if archived is not None else None)
+    print_result(result, compare_history_command=history_compare_command(root, run_dir, history_dir) if archived is not None else None, result_dir=run_dir)
     return 0
 
 

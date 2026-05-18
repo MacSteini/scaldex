@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import shlex
 from collections import defaultdict
 from pathlib import Path
 from statistics import median
@@ -863,6 +864,66 @@ def format_warning_list(warnings: Any) -> str:
     return str(warnings)
 
 
+def evidence_grade(result: dict[str, Any]) -> str:
+    decision = result.get("decision", {})
+    if isinstance(decision, dict) and decision.get("decision_grade"):
+        return "decision-grade"
+    return "smoke"
+
+
+def quality_gate_text(result: dict[str, Any]) -> str:
+    decision = result.get("decision", {})
+    return "passed" if isinstance(decision, dict) and decision.get("quality_gate_passed") else "failed"
+
+
+def decision_run_command(result: dict[str, Any]) -> str:
+    run_config = result.get("run_config", {})
+    if not isinstance(run_config, dict) or not run_config.get("model"):
+        return "Run the same task again with --repeats 3 and the same --model, --subject-dir, and --task-id options."
+    command = ["python3", "run_tokenmessung.py", "--model", str(run_config["model"])]
+    if run_config.get("subject_dir"):
+        command.extend(["--subject-dir", str(run_config["subject_dir"])])
+    command.extend(["--repeats", "3"])
+    if run_config.get("all_tasks"):
+        command.append("--all-tasks")
+    else:
+        task_ids = run_config.get("task_ids")
+        if isinstance(task_ids, list):
+            for task_id in task_ids:
+                command.extend(["--task-id", str(task_id)])
+    if run_config.get("subject_mode") and run_config.get("subject_mode") != "package":
+        command.extend(["--subject-mode", str(run_config["subject_mode"])])
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def codex_requested_action(result: dict[str, Any]) -> str:
+    decision = result.get("decision", {})
+    next_action = decision.get("next_action") if isinstance(decision, dict) else ""
+    if next_action == "eligible_for_decision_run":
+        return f"Tell the user to run this decision-grade command exactly before making optimisation claims: {decision_run_command(result)}"
+    if next_action == "stop_fix_quality_or_task_behavior":
+        return "Analyze the quality, expected-file, structured-output, warning, or path blockers first; propose minimal fixes before any more paid benchmarking."
+    if next_action == "record_decision_grade_win":
+        return "Record this report as decision-grade evidence and check whether enough matching decision-grade reports exist before allowing any global efficiency claim."
+    if next_action == "do_not_claim_efficiency":
+        return "Analyze task-specific behaviour and propose minimal AGENTS.md/.codex changes, but do not claim efficiency from this result."
+    return "Inspect the result and ask for missing context before recommending paid reruns or package changes."
+
+
+def codex_forbidden_action(result: dict[str, Any]) -> str:
+    decision = result.get("decision", {})
+    next_action = decision.get("next_action") if isinstance(decision, dict) else ""
+    if next_action == "eligible_for_decision_run":
+        return "Do not optimize AGENTS.md/.codex yet and do not claim efficiency; this is smoke evidence only."
+    if next_action == "stop_fix_quality_or_task_behavior":
+        return "Do not treat token reductions as wins while quality, path, output, usage, or warning blockers exist."
+    if next_action == "record_decision_grade_win":
+        return "Do not make a global efficiency claim unless a multi-report summary proves enough decision-grade tasks are effective."
+    if next_action == "do_not_claim_efficiency":
+        return "Do not claim token efficiency and do not make broad rewrites; propose only evidence-linked, minimal changes."
+    return "Do not infer missing evidence, do not use variant medians as the decision metric, and do not recommend paid reruns without a clear reason."
+
+
 def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     primary = result["primary_delta"]
     quality = result["quality"]
@@ -881,6 +942,8 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         "# Tokenmessung Result",
         "",
         f"Verdict: **{result['verdict']}**",
+        "",
+        f"For Codex action, use `{artifacts.get('codex_handoff_md', 'CODEX_HANDOFF.md') if isinstance(artifacts, dict) else 'CODEX_HANDOFF.md'}`.",
         "",
         "## Decision Summary",
         "",
@@ -1030,48 +1093,93 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
     context = result.get("context", {})
     benchmark_warnings = result.get("benchmark_warnings", [])
     subject = result.get("subject", {})
+    raw_paths = final_relevant.get("raw_non_repo_relative_paths", []) if isinstance(final_relevant, dict) else []
+    missing_paths = final_relevant.get("missing_expected_paths", []) if isinstance(final_relevant, dict) else []
+    non_relative_paths = final_relevant.get("non_repo_relative_paths", []) if isinstance(final_relevant, dict) else []
     task_ids = context.get("task_ids", []) if isinstance(context, dict) else []
     task_text = ", ".join(str(task_id) for task_id in task_ids) if task_ids else "unknown"
+    benchmark_warning_text = format_warning_list(benchmark_warnings)
     lines = [
-        "# Tokenmessung Codex Handoff",
+        "# Tokenmessung Codex Instruction",
         "",
-        "Paste this brief into Codex when you want a follow-up agent to act on this measurement.",
+        "Role: You are Codex analyzing a Tokenmessung benchmark result.",
         "",
-        "## Measurement Decision",
+        "User goal: optimize the measured AGENTS.md/.codex package only when evidence supports it.",
+        "",
+        "Your job: follow the requested action below without making unsupported efficiency claims.",
+        "",
+        "## Requested Action",
+        "",
+        codex_requested_action(result),
+        "",
+        "## Decision Status",
         "",
         f"- Task(s): `{task_text}`",
         f"- Verdict: `{result.get('verdict', 'unknown')}`",
-        f"- Decision: `{decision.get('decision', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
-        f"- Next action: `{decision.get('next_action', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
+        f"- Decision status: `{decision.get('decision', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
+        f"- Next action code: `{decision.get('next_action', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
         f"- Reason: `{decision.get('reason', 'unknown') if isinstance(decision, dict) else 'unknown'}`",
         f"- Explanation: {decision.get('explanation', 'unknown') if isinstance(decision, dict) else 'unknown'}",
-        f"- Primary metric: `{decision.get('primary_metric_basis', 'paired_median_non_cached_input_delta') if isinstance(decision, dict) else 'paired_median_non_cached_input_delta'}`",
+        f"- Evidence grade: `{evidence_grade(result)}`",
+        f"- Global claim eligibility: `{decision.get('global_claim_eligibility', 'single-task only / not enough evidence') if isinstance(decision, dict) else 'single-task only / not enough evidence'}`",
+        "",
+        "## Primary Metric",
+        "",
+        "- Primary metric: `paired_median_non_cached_input_delta`",
         f"- Paired median non-cached input delta: {format_number(primary.get('agents_minus_control', 0) if isinstance(primary, dict) else 0)} ({format_percent(primary.get('percent') if isinstance(primary, dict) else None)})",
-        f"- Quality: agents {quality.get('agents_success_rate', 'n/a') if isinstance(quality, dict) else 'n/a'} / control {quality.get('control_success_rate', 'n/a') if isinstance(quality, dict) else 'n/a'}",
+        "- Decision rule: use paired median non-cached input delta plus quality gates; variant medians are secondary context only.",
+        "",
+        "## Quality Gates",
+        "",
+        f"- Quality gate: `{quality_gate_text(result)}`",
+        f"- Agents quality: `{quality.get('agents_success_rate', 'n/a') if isinstance(quality, dict) else 'n/a'}`",
+        f"- Control quality: `{quality.get('control_success_rate', 'n/a') if isinstance(quality, dict) else 'n/a'}`",
         f"- Paired runs: {format_number(reliability.get('paired_runs', 0) if isinstance(reliability, dict) else 0)}",
-        f"- Normalized repo-relative relevant files: {final_relevant.get('normalized_repo_relative_only', False) if isinstance(final_relevant, dict) else False}",
-        f"- Benchmark warnings: {format_warning_list(benchmark_warnings)}",
+        f"- Benchmark warnings: `{benchmark_warning_text}`",
+        "",
+        "## Relevant Files Integrity",
+        "",
+        f"- Repo-relative relevant_files only: `{final_relevant.get('repo_relative_only', False) if isinstance(final_relevant, dict) else False}`",
+        f"- Normalized repo-relative relevant_files only: `{final_relevant.get('normalized_repo_relative_only', False) if isinstance(final_relevant, dict) else False}`",
+        f"- Raw non-repo-relative paths: `{format_warning_list(raw_paths)}`",
+        f"- Non-repo-relative paths after normalisation: `{format_warning_list(non_relative_paths)}`",
+        f"- Missing expected relevant files: `{format_warning_list(missing_paths)}`",
+        "",
+        "## Run Identity",
+        "",
         f"- Subject fingerprint: `{integrity.get('subject_fingerprint', 'n/a') if isinstance(integrity, dict) else 'n/a'}`",
         f"- Run config fingerprint: `{integrity.get('run_config_fingerprint', 'n/a') if isinstance(integrity, dict) else 'n/a'}`",
+        f"- Batch ID: `{integrity.get('batch_id', 'n/a') if isinstance(integrity, dict) else 'n/a'}`",
         f"- Subject size: {human_bytes(subject.get('total_bytes', 0) if isinstance(subject, dict) else 0)} across {format_number(subject.get('source_file_count', 0) if isinstance(subject, dict) else 0)} files",
         "",
-        "## Human Reading",
+        "## Allowed Actions",
         "",
-        f"- What happened: {decision.get('explanation', 'Inspect the report before acting.') if isinstance(decision, dict) else 'Inspect the report before acting.'}",
-        "- Why it matters: the primary decision metric is paired median non-cached input delta; variant medians are only supporting context.",
-        f"- What to do next: {handoff_request(decision if isinstance(decision, dict) else {})}",
+        "- Explain this measurement using the primary metric and quality gates above.",
+        "- Ask the user for the measured AGENTS.md/.codex package if you need to inspect or modify it.",
+        "- Propose minimal AGENTS.md/.codex changes only when the requested action permits optimisation work.",
+        "- Ask the user before running additional paid benchmarks.",
         "",
-        "## Interpretation Rules",
+        "## Forbidden Actions",
         "",
-        "- Use the paired median non-cached input delta as the primary decision metric.",
-        "- Treat variant medians as secondary context only.",
-        "- Treat failed quality gates, missing expected files, invalid final JSON, missing usage data, or benchmark warnings as blockers.",
-        "- Do not make a global token-efficiency claim from this report alone; use `tokenmessung bench summarize` across decision-grade task reports.",
-        "- Do not rerun paid benchmarks until the next action is clear.",
+        f"- {codex_forbidden_action(result)}",
+        "- Do not use unpaired variant medians as the decision metric.",
+        "- Do not ignore failed quality gates, missing expected files, invalid final JSON, missing usage data, or benchmark warnings.",
+        "- Do not edit benchmark fixture files as if they were the user's AGENTS.md/.codex package.",
         "",
-        "## Follow-up Request",
+        "## Files To Inspect Next",
         "",
-        handoff_request(decision if isinstance(decision, dict) else {}),
+        "- This handoff file.",
+        "- `RESULT.md` for the human-readable report.",
+        "- `result.json` for machine-readable evidence.",
+        "- The measured `AGENTS.md` and `.codex/` package supplied by the user.",
+        "",
+        "## Output Expected From Codex",
+        "",
+        "- State whether this is smoke or decision-grade evidence.",
+        "- State the requested action you will follow.",
+        "- State any blockers before recommending more paid runs.",
+        "- If optimisation is allowed, propose minimal evidence-linked changes to AGENTS.md/.codex.",
+        "- If optimisation is not allowed, give the exact next measurement or blocker-fix step instead.",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

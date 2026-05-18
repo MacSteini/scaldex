@@ -1,6 +1,6 @@
 # Local Tokenmessung Test
 
-Use this file to run Tokenmessung against a real local `AGENTS.md` package.
+Use this file to run Tokenmessung against a real local `AGENTS.md` package and hand the result to Codex.
 
 ## Enduser Flow
 
@@ -20,17 +20,28 @@ If the tool asks for a key, enter your Codex API key at the hidden prompt.
 Tokenmessung does not write that key into reports, history, or config files.
 That is why you may need to enter it again in a new terminal run unless you set `CODEX_API_KEY` yourself.
 
+## Give The Result To Codex
+
+The main follow-up file is:
+
+```text
+tokenmessung-run/CODEX_HANDOFF.md
+```
+
+Give that file to Codex when you want help interpreting the measurement, deciding whether another paid run is useful, or optimizing the measured `AGENTS.md`/`.codex` package.
+
 ## Read The Terminal Output
 
 - `What this means`: explains the result in plain language.
-- `What to do now`: tells you whether to stop, run `--repeats 3`, keep the report, or avoid an efficiency claim.
+- `What to do now`: tells you whether to hand the result to Codex, stop, run `--repeats 3`, keep the report, or avoid an efficiency claim.
+- `Codex instruction`: shows the exact handoff file and the action Codex should follow.
 - `Paired median non-cached input delta`: primary token metric.
 - `Quality`: both agents and control need to be `1.0 / 1.0` for clean evidence.
 
 ## Use The Report Files
 
 - `tokenmessung-run/RESULT.md`: main human-readable report.
-- `tokenmessung-run/CODEX_HANDOFF.md`: short follow-up brief for Codex.
+- `tokenmessung-run/CODEX_HANDOFF.md`: Codex-first instruction file for the next analysis or optimization step.
 - `tokenmessung-run/result.json`: machine-readable report.
 
 ## Replay A Result Without Spending Money

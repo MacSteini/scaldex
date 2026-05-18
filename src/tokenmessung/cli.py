@@ -99,7 +99,8 @@ def main(argv: list[str] | None = None) -> int:
             required.append("codex_api_key_present")
         return 0 if all(checks.get(key) for key in required) else 1
     if args.command == "result" and args.result_command == "show":
-        print_result(load_result_json(args.result_json))
+        result_path = args.result_json.resolve()
+        print_result(load_result_json(result_path), result_dir=result_path.parent)
         return 0
     parser.error("Unhandled command")
     return 2
