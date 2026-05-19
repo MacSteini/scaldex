@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tokenmessung.multisummary import build_multi_summary, discover_result_jsons, format_multi_summary_console, summarize_results
+from scaldex.multisummary import build_multi_summary, discover_result_jsons, format_multi_summary_console, summarize_results
 
 
 def write_result(
@@ -164,7 +164,7 @@ class MultiSummaryTests(unittest.TestCase):
             payload = json.loads(outputs["summary_json"].read_text(encoding="utf-8"))
             self.assertEqual(payload["tasks"][0]["task_id"], "login_test_failure")
             report = outputs["summary_md"].read_text(encoding="utf-8")
-            self.assertIn("# Tokenmessung Multi-Task Summary", report)
+            self.assertIn("# scaldex multi-task summary", report)
             self.assertIn("Can claim global efficiency:", report)
             self.assertIn("Global decision: **do_not_claim_global_efficiency**", report)
             self.assertIn("Plain explanation:", report)
@@ -180,7 +180,7 @@ class MultiSummaryTests(unittest.TestCase):
             write_multi_task_result(result_path, ["login_test_failure"], paired_runs=2, subject_mode="synthetic")
             summary = build_multi_summary([result_path])
             text = format_multi_summary_console(summary)
-            self.assertIn("=== Tokenmessung Summary ===", text)
+            self.assertIn("=== scaldex summary ===", text)
             self.assertIn("developer/CI synthetic fixture", text)
             self.assertIn("not to claim real token efficiency", text)
             self.assertIn("What to do now:", text)

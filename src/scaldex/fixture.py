@@ -132,7 +132,7 @@ export function registerExportCli(args: string[]): void {
     run_git(["init", "-q"], out)
     run_git(["add", "."], out)
     subprocess.run(
-        ["git", "-c", "user.name=tokenmessung", "-c", "user.email=tokenmessung@example.invalid", "commit", "-q", "-m", "fixture snapshot"],
+        ["git", "-c", "user.name=scaldex", "-c", "user.email=scaldex@example.invalid", "commit", "-q", "-m", "fixture snapshot"],
         cwd=out,
         check=True,
     )

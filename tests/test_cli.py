@@ -8,7 +8,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from tokenmessung.cli import main
+from scaldex.cli import main
 
 
 class CliTests(unittest.TestCase):
@@ -34,7 +34,7 @@ class CliTests(unittest.TestCase):
             "supports_ignore_user_config": True,
             "supports_ignore_rules": True,
         }
-        with patch("tokenmessung.cli.doctor", return_value=checks):
+        with patch("scaldex.cli.doctor", return_value=checks):
             code, payload = self.run_cli(["bench", "doctor"])
         self.assertEqual(code, 0)
         self.assertFalse(payload["codex_api_key_present"])
@@ -49,7 +49,7 @@ class CliTests(unittest.TestCase):
             "supports_ignore_user_config": True,
             "supports_ignore_rules": True,
         }
-        with patch("tokenmessung.cli.doctor", return_value=checks):
+        with patch("scaldex.cli.doctor", return_value=checks):
             code, _payload = self.run_cli(["bench", "doctor", "--require-api-key"])
         self.assertEqual(code, 1)
 
@@ -63,18 +63,37 @@ class CliTests(unittest.TestCase):
             "supports_ignore_user_config": True,
             "supports_ignore_rules": True,
         }
-        with patch("tokenmessung.cli.doctor", return_value=checks):
+        with patch("scaldex.cli.doctor", return_value=checks):
             code, payload = self.run_cli(["bench", "doctor", "--require-api-key"])
         self.assertEqual(code, 0)
         self.assertTrue(payload["codex_api_key_present"])
 
-    def test_bench_run_requires_one_agents_source(self) -> None:
+    def test_top_level_args_delegate_to_high_level_runner(self) -> None:
+        with patch("scaldex.cli.app_main", return_value=0) as app_main:
+            self.assertEqual(main(["--model", "model"]), 0)
+        app_main.assert_called_once_with(["--model", "model"])
+
+    def test_public_help_uses_high_level_runner(self) -> None:
         output = io.StringIO()
         error = io.StringIO()
-        with self.assertRaises(SystemExit), redirect_stdout(output), redirect_stderr(error):
-            main(["bench", "run", "--fixture", "fixture", "--model", "model", "--out", "results"])
+        with self.assertRaises(SystemExit) as ctx, redirect_stdout(output), redirect_stderr(error):
+            main(["--help"])
+        self.assertEqual(ctx.exception.code, 0)
+        help_text = output.getvalue()
+        self.assertIn("scaldex --model gpt-5.4", help_text)
+        self.assertIn("scaldex --print-result scaldex-run/result.json", help_text)
+        self.assertNotIn("fixture", help_text)
 
-    def test_bench_help_hides_synthetic_fixture_command(self) -> None:
+    def test_utility_help_hides_internal_fixture_and_raw_benchmark_commands(self) -> None:
+        output = io.StringIO()
+        error = io.StringIO()
+        with self.assertRaises(SystemExit) as ctx, redirect_stdout(output), redirect_stderr(error):
+            main(["--help"])
+        self.assertEqual(ctx.exception.code, 0)
+        root_help = output.getvalue()
+        self.assertNotIn("fixture", root_help)
+        self.assertNotIn("bench run", root_help)
+
         output = io.StringIO()
         error = io.StringIO()
         with self.assertRaises(SystemExit) as ctx, redirect_stdout(output), redirect_stderr(error):
@@ -82,29 +101,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 0)
         help_text = output.getvalue()
         self.assertIn("summarize", help_text)
+        self.assertIn("doctor", help_text)
+        self.assertNotIn("fixture", help_text)
+        self.assertNotIn("run        Run a paid benchmark", help_text)
+        self.assertNotIn("analyze", help_text)
         self.assertNotIn("synthesize", help_text)
         self.assertNotIn("synthetic", help_text.lower())
-
-    def test_bench_run_rejects_conflicting_agents_sources(self) -> None:
-        output = io.StringIO()
-        error = io.StringIO()
-        with self.assertRaises(SystemExit), redirect_stdout(output), redirect_stderr(error):
-            main(
-                [
-                    "bench",
-                    "run",
-                    "--fixture",
-                    "fixture",
-                    "--agents-file",
-                    "AGENTS.md",
-                    "--agents-dir",
-                    "subject",
-                    "--model",
-                    "model",
-                    "--out",
-                    "results",
-                ]
-            )
 
     def test_bench_summarize_writes_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -159,7 +161,7 @@ class CliTests(unittest.TestCase):
             )
             code, text = self.run_cli_text(["bench", "summarize", str(base), "--out", str(out)])
             self.assertEqual(code, 0)
-            self.assertIn("=== Tokenmessung Summary ===", text)
+            self.assertIn("=== scaldex summary ===", text)
             self.assertIn("Can claim global efficiency:", text)
             self.assertIn("What to do now:", text)
             self.assertIn("Human summary:", text)
@@ -194,7 +196,7 @@ class CliTests(unittest.TestCase):
             )
             code, text = self.run_cli_text(["result", "show", str(result)])
             self.assertEqual(code, 0)
-            self.assertIn("=== Tokenmessung Result ===", text)
+            self.assertIn("=== scaldex result ===", text)
             self.assertIn("Result\n", text)
             self.assertIn("Verdict: effective", text)
             self.assertIn("What this means:", text)
@@ -208,7 +210,7 @@ class CliTests(unittest.TestCase):
             self.assertIn("control means the same task run without that package and without your global ~/.codex config.", text)
             self.assertIn("Primary metric: agents used 10 fewer non-cached input tokens than control (-10.0%).", text)
             self.assertIn("Secondary context only: agents median 90, control median 100; this is not the decision metric.", text)
-            self.assertIn("Both sides completed successfully: agents 1.0, control 1.0.", text)
+            self.assertIn("Both sides completed all required runs successfully: agents success rate 100% (1.0), control success rate 100% (1.0).", text)
             self.assertIn("This run excluded your global ~/.codex config, so the subject package was measured in isolation.", text)
             self.assertIn("Report identity: batch batch-test; subject fingerprint subject-test; run config fingerprint config-test.", text)
             self.assertIn("Path integrity: final relevant files normalize to repo-relative paths, so Codex can compare reports safely.", text)
@@ -253,8 +255,8 @@ class CliTests(unittest.TestCase):
             local_handoff = result.parent / "CODEX_HANDOFF.md"
             local_report = result.parent / "RESULT.md"
             result.parent.mkdir()
-            local_handoff.write_text("# Tokenmessung Codex Instruction\n", encoding="utf-8")
-            local_report.write_text("# Tokenmessung Result\n", encoding="utf-8")
+            local_handoff.write_text("# scaldex codex instruction\n", encoding="utf-8")
+            local_report.write_text("# scaldex result\n", encoding="utf-8")
             stale_handoff = base / "old" / "CODEX_HANDOFF.md"
             result.write_text(
                 json.dumps(
@@ -284,7 +286,7 @@ class CliTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 main(["result", "show", str(missing)])
             self.assertIn("Missing result file", str(ctx.exception))
-            self.assertIn("run a smoke test first", str(ctx.exception))
+            self.assertIn("Run a smoke test to create a result.json", str(ctx.exception))
 
 
 if __name__ == "__main__":

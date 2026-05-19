@@ -880,7 +880,7 @@ def decision_run_command(result: dict[str, Any]) -> str:
     run_config = result.get("run_config", {})
     if not isinstance(run_config, dict) or not run_config.get("model"):
         return "Run the same task again with --repeats 3 and the same --model, --subject-dir, and --task-id options."
-    command = ["python3", "run_tokenmessung.py", "--model", str(run_config["model"])]
+    command = ["python3", "run_scaldex.py", "--model", str(run_config["model"])]
     if run_config.get("subject_dir"):
         command.extend(["--subject-dir", str(run_config["subject_dir"])])
     command.extend(["--repeats", "3"])
@@ -939,7 +939,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     artifacts = result.get("artifacts", {})
     raw_results_dir = artifacts.get("raw_results_dir", "raw/") if isinstance(artifacts, dict) else "raw/"
     lines = [
-        "# Tokenmessung Result",
+        "# scaldex result",
         "",
         f"Verdict: **{result['verdict']}**",
         "",
@@ -1082,7 +1082,7 @@ def handoff_request(decision: dict[str, Any]) -> str:
         return "Fix quality, expected-file, structured-output, or path issues before spending more runs on efficiency."
     if next_action == "record_decision_grade_win":
         if scope == "result_set":
-            return "Record this as decision-grade evidence and verify global claim eligibility with `tokenmessung bench summarize` before making a public claim."
+            return "Record this as decision-grade evidence and verify global claim eligibility with `scaldex bench summarize` before making a public claim."
         return "Record this as a decision-grade win and combine it with other decision-grade task results before making a global claim."
     if next_action == "do_not_claim_efficiency":
         if scope == "result_set":
@@ -1108,9 +1108,9 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
     task_text = ", ".join(str(task_id) for task_id in task_ids) if task_ids else "unknown"
     benchmark_warning_text = format_warning_list(benchmark_warnings)
     lines = [
-        "# Tokenmessung Codex Instruction",
+        "# scaldex codex instruction",
         "",
-        "Role: You are Codex analyzing a Tokenmessung benchmark result.",
+        "Role: You are Codex analyzing a scaldex benchmark result.",
         "",
         "User goal: optimize the measured AGENTS.md/.codex package only when evidence supports it.",
         "",

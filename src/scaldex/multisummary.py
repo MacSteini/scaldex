@@ -225,7 +225,7 @@ def plain_global_explanation(summary: dict[str, Any]) -> str:
         return "You have enough decision-grade task evidence to claim global token efficiency for this measured subject."
     blockers = set(summary.get("global_blockers", []))
     if "synthetic_results_only" in blockers or "synthetic_results_only" in set(summary.get("warnings", [])):
-        return "This is synthetic Tokenmessung test data. Use it for development or CI checks only, not to claim real token efficiency."
+        return "This is synthetic scaldex test data. Use it for development or CI checks only, not to claim real token efficiency."
     if any(str(blocker).startswith("decision_grade_tasks_incomplete:") for blocker in blockers):
         return "The summary does not yet contain decision-grade evidence for all expected tasks."
     if any(str(blocker).startswith("effective_decision_grade_tasks_below_threshold:") for blocker in blockers):
@@ -257,7 +257,7 @@ def report_type_text(summary: dict[str, Any]) -> str:
 def format_multi_summary_console(summary: dict[str, Any], paths: dict[str, Path] | None = None) -> str:
     lines = [
         "",
-        "=== Tokenmessung Summary ===",
+        "=== scaldex summary ===",
         f"Report type: {report_type_text(summary)}",
         f"Can claim global efficiency: {yes_no(summary['global_token_efficiency_claim_allowed'])}",
         f"Why: {plain_global_explanation(summary)}",
@@ -284,7 +284,7 @@ def format_multi_summary_console(summary: dict[str, Any], paths: dict[str, Path]
 def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
     synthetic = "synthetic_results_only" in summary.get("warnings", [])
     lines = [
-        "# Tokenmessung Multi-Task Summary",
+        "# scaldex multi-task summary",
         "",
         f"Status: **{report_type_text(summary)}**",
         "",
@@ -299,7 +299,7 @@ def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
         "This report combines existing `result.json` files. It does not run Codex and does not spend API money.",
         "",
         (
-            "This report uses synthetic Tokenmessung test data. It does not measure your `AGENTS.md`, your `.codex/` package, or any real Codex run."
+            "This report uses synthetic scaldex test data. It does not measure your `AGENTS.md`, your `.codex/` package, or any real Codex run."
             if synthetic
             else "Use this summary to decide whether several task reports support a broader efficiency claim."
         ),
@@ -381,8 +381,8 @@ def summarize_results(inputs: list[Path], out: Path) -> dict[str, Path]:
     paths = discover_result_jsons(inputs)
     summary = build_multi_summary(paths)
     out.mkdir(parents=True, exist_ok=True)
-    json_path = out / "tokenmessung-summary.json"
-    md_path = out / "TOKENMESSUNG_SUMMARY.md"
+    json_path = out / "scaldex-summary.json"
+    md_path = out / "SCALDEX_SUMMARY.md"
     json_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_multi_summary_markdown(md_path, summary)
     return {"summary_json": json_path, "summary_md": md_path}

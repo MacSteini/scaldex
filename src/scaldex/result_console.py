@@ -30,7 +30,7 @@ def load_result_json(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise SystemExit(
             f"Missing result file: {path}\n"
-            "Pass an existing tokenmessung-run/result.json, or run a smoke test first to create one."
+            "Run a smoke test to create a result.json, or pass the exact result.json file you want to replay."
         )
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -69,7 +69,7 @@ def artifact_path(result: dict[str, object], key: str, result_dir: Path | None =
 
 def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
     if synthetic:
-        return "Use this only for Tokenmessung development or CI checks. It does not measure your AGENTS.md or .codex package."
+        return "Use this only for scaldex development or CI checks. It does not measure your AGENTS.md or .codex package."
     next_action = decision.get("next_action")
     scope = decision.get("scope", "task")
     if next_action == "eligible_for_decision_run":
@@ -144,8 +144,8 @@ def quality_sentence(quality: dict[str, Any]) -> str:
     agents = quality.get("agents_success_rate", "n/a")
     control = quality.get("control_success_rate", "n/a")
     if agents == 1.0 and control == 1.0:
-        return f"Both sides completed successfully: agents {agents}, control {control}."
-    return f"Quality gate needs attention: agents {agents}, control {control}."
+        return f"Both sides completed all required runs successfully: agents success rate 100% ({agents}), control success rate 100% ({control})."
+    return f"Quality gate needs attention: agents success rate {agents}, control success rate {control}."
 
 
 def subject_sentence(subject: dict[str, Any]) -> str:
@@ -213,11 +213,11 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
         result["decision"] = decision
     synthetic = isinstance(subject, dict) and subject.get("mode") == "synthetic"
     display_explanation = (
-        "This is synthetic Tokenmessung test data. It is useful for development checks only, not as real benchmark evidence."
+        "This is synthetic scaldex test data. It is useful for development checks only, not as real benchmark evidence."
         if synthetic
         else decision.get("explanation", "unknown")
     )
-    print("\n=== Tokenmessung Result ===")
+    print("\n=== scaldex result ===")
     print("Result")
     print(f"Result type: {'developer/CI synthetic fixture' if synthetic else 'real benchmark report'}")
     print(f"Verdict: {result.get('verdict', 'unknown')}")
@@ -242,7 +242,7 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     if isinstance(subject, dict):
         print(subject_sentence(subject))
         if subject.get("mode") == "synthetic":
-            print("Report note: synthetic Tokenmessung test data; development and CI checks only.")
+            print("Report note: synthetic scaldex test data; development and CI checks only.")
     if isinstance(integrity, dict):
         print(fingerprints_sentence(integrity))
     print()

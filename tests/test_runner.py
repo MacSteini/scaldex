@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tokenmessung.fixture import create_fixture
-from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, copy_fixture, init_git_snapshot, install_agents_dir, install_agents_file, prepare_generated_dir, remove_control_instructions, run_benchmark, run_one, selected_tasks, subject_fingerprint, synthesize_benchmark, validate_benchmark_inputs
+from scaldex.fixture import create_fixture
+from scaldex.runner import GENERATED_MARKER, audit_subject_source, copy_fixture, init_git_snapshot, install_agents_dir, install_agents_file, prepare_generated_dir, remove_control_instructions, run_benchmark, run_one, selected_tasks, subject_fingerprint, synthesize_benchmark, validate_benchmark_inputs
 
 
 class FakeProcess:
@@ -160,7 +160,7 @@ class RunnerVariantTests(unittest.TestCase):
             subject = base / "subject"
             subject.mkdir()
             (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
-            with patch("tokenmessung.runner.codex_exec_capabilities", return_value={"supports_json": True, "supports_output_schema": True, "supports_ignore_user_config": True, "supports_ignore_rules": True}):
+            with patch("scaldex.runner.codex_exec_capabilities", return_value={"supports_json": True, "supports_output_schema": True, "supports_ignore_user_config": True, "supports_ignore_rules": True}):
                 validate_benchmark_inputs(fixture, None, 1, require_api_key=False, agents_dir=subject)
 
     def test_validate_rejects_missing_api_key(self) -> None:
@@ -168,7 +168,7 @@ class RunnerVariantTests(unittest.TestCase):
             base = Path(tmp)
             fixture = create_fixture(base / "fixture")
             agents_file = fixture / "AGENTS.md"
-            with patch.dict("os.environ", {}, clear=True), patch("tokenmessung.runner.codex_exec_capabilities", return_value={"supports_json": True, "supports_output_schema": True, "supports_ignore_user_config": True, "supports_ignore_rules": True}):
+            with patch.dict("os.environ", {}, clear=True), patch("scaldex.runner.codex_exec_capabilities", return_value={"supports_json": True, "supports_output_schema": True, "supports_ignore_user_config": True, "supports_ignore_rules": True}):
                 with self.assertRaises(EnvironmentError):
                     validate_benchmark_inputs(fixture, agents_file, 1)
 
@@ -211,7 +211,7 @@ class RunnerVariantTests(unittest.TestCase):
                 run_dir.mkdir(parents=True, exist_ok=True)
                 (run_dir / "meta.json").write_text("{}\n", encoding="utf-8")
 
-            with patch("tokenmessung.runner.validate_benchmark_inputs"), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.audit_subject_source", return_value={"mode": "manual", "file_count": 1, "total_bytes": 1, "fingerprint": "subject", "warnings": []}), patch("tokenmessung.runner.selected_tasks", return_value=[task]), patch("tokenmessung.runner.run_one", side_effect=fake_run_one), patch("tokenmessung.runner.analyze_results", return_value={"result_json": out / "result.json"}):
+            with patch("scaldex.runner.validate_benchmark_inputs"), patch("scaldex.runner.fixture_commit", return_value="abc"), patch("scaldex.runner.audit_subject_source", return_value={"mode": "manual", "file_count": 1, "total_bytes": 1, "fingerprint": "subject", "warnings": []}), patch("scaldex.runner.selected_tasks", return_value=[task]), patch("scaldex.runner.run_one", side_effect=fake_run_one), patch("scaldex.runner.analyze_results", return_value={"result_json": out / "result.json"}):
                 run_benchmark(fixture, agents_file, "model", 1, out, workspace_root=workspace_root)
             self.assertTrue((out / GENERATED_MARKER).exists())
             self.assertTrue((workspace_root / GENERATED_MARKER).exists())
@@ -232,7 +232,7 @@ class RunnerVariantTests(unittest.TestCase):
                 run_dir.mkdir(parents=True, exist_ok=True)
                 (run_dir / "meta.json").write_text("{}\n", encoding="utf-8")
 
-            with patch("tokenmessung.runner.validate_benchmark_inputs"), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.audit_subject_source", return_value={"mode": "manual", "file_count": 1, "total_bytes": 1, "fingerprint": "subject-fp", "warnings": []}), patch("tokenmessung.runner.selected_tasks", return_value=[task]), patch("tokenmessung.runner.run_one", side_effect=fake_run_one), patch("tokenmessung.runner.analyze_results", return_value={"result_json": out / "result.json"}):
+            with patch("scaldex.runner.validate_benchmark_inputs"), patch("scaldex.runner.fixture_commit", return_value="abc"), patch("scaldex.runner.audit_subject_source", return_value={"mode": "manual", "file_count": 1, "total_bytes": 1, "fingerprint": "subject-fp", "warnings": []}), patch("scaldex.runner.selected_tasks", return_value=[task]), patch("scaldex.runner.run_one", side_effect=fake_run_one), patch("scaldex.runner.analyze_results", return_value={"result_json": out / "result.json"}):
                 run_benchmark(fixture, agents_file, "model", 2, out, seed=7, workspace_root=workspace_root, batch_id="batch-fixed")
             self.assertEqual(len(seen), 4)
             self.assertEqual({item["batch_id"] for item in seen}, {"batch-fixed"})
@@ -266,7 +266,7 @@ class RunnerVariantTests(unittest.TestCase):
             (fixture / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
             agents_file = fixture / "AGENTS.md"
             task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
-            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess()), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+            with patch("scaldex.runner.subprocess.run", return_value=FakeResult()), patch("scaldex.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess()), patch("scaldex.runner.fixture_commit", return_value="abc"), patch("scaldex.runner.codex_version", return_value="codex-test"):
                 run_one(fixture=fixture, agents_file=agents_file, agents_dir=None, model="model", out=base / "results", task=task, variant="agents", repeat=1, run_order=1)
                 removed_meta = (base / "results" / "task__agents__r1" / "meta.json").read_text(encoding="utf-8")
                 self.assertIn('"workdir_cleanup": "removed"', removed_meta)
@@ -286,7 +286,7 @@ class RunnerVariantTests(unittest.TestCase):
             agents_file.write_text("# Agents\n", encoding="utf-8")
             workspace_root = base / "workspaces"
             task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
-            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess()), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+            with patch("scaldex.runner.subprocess.run", return_value=FakeResult()), patch("scaldex.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess()), patch("scaldex.runner.fixture_commit", return_value="abc"), patch("scaldex.runner.codex_version", return_value="codex-test"):
                 run_one(
                     fixture=fixture,
                     agents_file=agents_file,
@@ -314,7 +314,7 @@ class RunnerVariantTests(unittest.TestCase):
             agents_file.write_text("# Agents\n", encoding="utf-8")
             events: list[dict[str, object]] = []
             task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
-            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess(["timeout", 0])), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+            with patch("scaldex.runner.subprocess.run", return_value=FakeResult()), patch("scaldex.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess(["timeout", 0])), patch("scaldex.runner.fixture_commit", return_value="abc"), patch("scaldex.runner.codex_version", return_value="codex-test"):
                 run_one(
                     fixture=fixture,
                     agents_file=agents_file,
@@ -334,7 +334,7 @@ class RunnerVariantTests(unittest.TestCase):
             run_dir = base / "results" / "task__agents__r1"
             artifact_text = "\n".join(path.read_text(encoding="utf-8") for path in (run_dir / name for name in ("meta.json", "codex.jsonl", "stderr.log", "exit_code.txt", "time.json")))
             self.assertNotIn("run_heartbeat", artifact_text)
-            self.assertNotIn("[tokenmessung]", artifact_text)
+            self.assertNotIn("[scaldex]", artifact_text)
             self.assertFalse((run_dir / "output_schema.json").exists())
             self.assertFalse((run_dir / "codex-home").exists())
 
@@ -350,7 +350,7 @@ class RunnerVariantTests(unittest.TestCase):
             agents_file.write_text("# Agents\n", encoding="utf-8")
             events: list[dict[str, object]] = []
             task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
-            with patch("tokenmessung.runner.subprocess.run", return_value=FakeResult()), patch("tokenmessung.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess(["timeout", 0])), patch("tokenmessung.runner.fixture_commit", return_value="abc"), patch("tokenmessung.runner.codex_version", return_value="codex-test"):
+            with patch("scaldex.runner.subprocess.run", return_value=FakeResult()), patch("scaldex.runner.subprocess.Popen", side_effect=lambda *args, **kwargs: FakeProcess(["timeout", 0])), patch("scaldex.runner.fixture_commit", return_value="abc"), patch("scaldex.runner.codex_version", return_value="codex-test"):
                 run_one(
                     fixture=fixture,
                     agents_file=agents_file,

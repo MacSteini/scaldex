@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tokenmessung.analyzer import analyze_results, build_result, decision_summary, human_bytes, paired_deltas, parse_run, write_codex_handoff_markdown
+from scaldex.analyzer import analyze_results, build_result, decision_summary, human_bytes, paired_deltas, parse_run, write_codex_handoff_markdown
 
 
 def write_run(
@@ -140,8 +140,8 @@ class AnalyzerTests(unittest.TestCase):
                 path = base / f"{next_action}.md"
                 write_codex_handoff_markdown(path, result)
                 text = path.read_text(encoding="utf-8")
-                self.assertIn("# Tokenmessung Codex Instruction", text)
-                self.assertIn("Role: You are Codex analyzing a Tokenmessung benchmark result.", text)
+                self.assertIn("# scaldex codex instruction", text)
+                self.assertIn("Role: You are Codex analyzing a scaldex benchmark result.", text)
                 self.assertIn("## Requested Action", text)
                 self.assertIn(requested, text)
                 self.assertIn("## Primary Metric", text)
@@ -208,7 +208,7 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual(result["integrity"]["run_config_fingerprint"], "config-test")
             self.assertIn("warning_details", result)
             result_md = paths["result_md"].read_text(encoding="utf-8")
-            self.assertTrue(result_md.startswith("# Tokenmessung Result"))
+            self.assertTrue(result_md.startswith("# scaldex result"))
             self.assertIn("## Decision Summary", result_md)
             self.assertIn("| Next action | eligible_for_decision_run |", result_md)
             self.assertIn("| Reason | smoke_passed_needs_decision_grade |", result_md)
@@ -229,8 +229,8 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("## Integrity", result_md)
             self.assertIn("Aggregated command output counted: True", result_md)
             handoff_md = paths["codex_handoff_md"].read_text(encoding="utf-8")
-            self.assertIn("# Tokenmessung Codex Instruction", handoff_md)
-            self.assertIn("Role: You are Codex analyzing a Tokenmessung benchmark result.", handoff_md)
+            self.assertIn("# scaldex codex instruction", handoff_md)
+            self.assertIn("Role: You are Codex analyzing a scaldex benchmark result.", handoff_md)
             self.assertIn("## Requested Action", handoff_md)
             self.assertIn("## Decision Status", handoff_md)
             self.assertIn("- Next action code: `eligible_for_decision_run`", handoff_md)

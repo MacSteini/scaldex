@@ -1,4 +1,4 @@
-"""Tokenmessung benchmark package."""
+"""scaldex benchmark package."""
 
 __all__ = ["__version__"]
 

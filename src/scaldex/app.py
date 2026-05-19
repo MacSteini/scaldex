@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -11,14 +10,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR / "src"))
-
-from tokenmessung.fixture import create_fixture  # noqa: E402
-from tokenmessung.analyzer import TOOL_SANITY, explain_warning, human_bytes, write_codex_handoff_markdown  # noqa: E402
-from tokenmessung.result_console import load_result_json, print_result  # noqa: E402
-from tokenmessung.runner import GENERATED_MARKER, audit_subject_source, new_batch_id, run_benchmark  # noqa: E402
-from tokenmessung.schemas import TASKS  # noqa: E402
+from scaldex.fixture import create_fixture  # noqa: E402
+from scaldex.analyzer import TOOL_SANITY, explain_warning, human_bytes, write_codex_handoff_markdown  # noqa: E402
+from scaldex.result_console import load_result_json, print_result  # noqa: E402
+from scaldex.runner import GENERATED_MARKER, audit_subject_source, new_batch_id, run_benchmark  # noqa: E402
+from scaldex.schemas import TASKS  # noqa: E402
 
 
 class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
@@ -27,23 +23,24 @@ class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescript
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
+        prog="scaldex",
         description="Measure whether an AGENTS.md/Codex instruction package helps or hurts token usage.",
         epilog=(
             "Typical flow:\n"
             "  1. Put AGENTS.md and optional support files in subject/.\n"
-            "  2. Run a low-cost smoke test: python3 run_tokenmessung.py --model gpt-5.4\n"
-            "  3. Give tokenmessung-run/CODEX_HANDOFF.md to Codex for the next action.\n"
+            "  2. Run a low-cost smoke test: scaldex --model gpt-5.4\n"
+            "  3. Give scaldex-run/CODEX_HANDOFF.md to Codex for the next action.\n"
             "  4. Read 'What this means' and 'What to do now' as the human control layer.\n"
             "  5. Run --repeats 3 only when the handoff or terminal output tells you to.\n"
-            "  6. Replay an existing report without spending money: python3 run_tokenmessung.py --print-result tokenmessung-run/result.json\n\n"
-            "Tokenmessung never stores your Codex API key in generated reports. If CODEX_API_KEY is not already set,\n"
+            "  6. Replay an existing report without spending money: scaldex --print-result scaldex-run/result.json\n\n"
+            "scaldex never stores your Codex API key in generated reports. If CODEX_API_KEY is not already set,\n"
             "the tool asks for it at a hidden prompt for that process only."
         ),
         formatter_class=HelpFormatter,
     )
     parser.add_argument("--model", help="Codex model for paid benchmark runs. Required unless --print-result is used.")
     parser.add_argument("--subject-dir", type=Path, default=Path("subject"), help="Folder containing the instruction package to measure.")
-    parser.add_argument("--run-dir", type=Path, default=Path("tokenmessung-run"), help="Output folder for the current run report.")
+    parser.add_argument("--run-dir", type=Path, default=Path("scaldex-run"), help="Output folder for the current run report.")
     parser.add_argument("--repeats", type=int, default=1, help="Paired repeats per selected task. Use 1 for smoke, 3+ for decision-grade evidence.")
     parser.add_argument("--seed", type=int, default=1, help="Seed for deterministic task ordering.")
     parser.add_argument("--task-id", action="append", dest="task_ids", help="Task to run. Repeat this option for multiple selected tasks.")
@@ -51,20 +48,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--heartbeat-seconds", type=float, default=10.0, help="Seconds between progress heartbeat messages.")
     parser.add_argument("--max-run-seconds", type=float, default=300.0, help="Maximum seconds before one Codex run is stopped.")
     parser.add_argument("--subject-mode", choices=("package", "agents-md"), default="package", help="Measure the whole package or AGENTS.md only.")
-    parser.add_argument("--history-dir", type=Path, default=Path("tokenmessung-history"), help="Folder for compact archived reports from previous default runs.")
+    parser.add_argument("--history-dir", type=Path, default=Path("scaldex-history"), help="Folder for compact archived reports from previous default runs.")
     parser.add_argument("--no-archive-previous-result", action="store_true", help="Do not archive the previous generated run before replacing --run-dir.")
     parser.add_argument("--print-result", type=Path, help="Print an existing result.json without an API key, subject audit, or paid Codex run.")
     return parser
 
 
 def status(message: str) -> None:
-    print(f"[tokenmessung] {message}", file=sys.stderr, flush=True)
+    print(f"[scaldex] {message}", file=sys.stderr, flush=True)
 
 
 def ensure_api_key() -> str:
     if os.environ.get("CODEX_API_KEY"):
         return "env"
-    key = getpass.getpass("[tokenmessung] Enter Codex API Key: ")
+    key = getpass.getpass("[scaldex] Enter Codex API Key: ")
     if not key:
         raise SystemExit("CODEX_API_KEY is required.")
     os.environ["CODEX_API_KEY"] = key
@@ -86,13 +83,13 @@ def reset_run_dir(run_dir: Path, root: Path, subject_dir: Path) -> None:
         raise SystemExit("Refusing to use the current folder itself as --run-dir.")
     if run_dir == subject_dir or subject_dir.is_relative_to(run_dir):
         raise SystemExit("Refusing to place subject/ inside --run-dir because generated cleanup would remove it.")
-    default_run_dir = (root / "tokenmessung-run").resolve()
+    default_run_dir = (root / "scaldex-run").resolve()
     if run_dir.exists() and run_dir != default_run_dir and any(run_dir.iterdir()) and not (run_dir / GENERATED_MARKER).exists():
-        raise SystemExit(f"Refusing to replace non-tokenmessung --run-dir without {GENERATED_MARKER}: {run_dir}")
+        raise SystemExit(f"Refusing to replace non-scaldex --run-dir without {GENERATED_MARKER}: {run_dir}")
     if run_dir.exists():
         shutil.rmtree(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / GENERATED_MARKER).write_text("generated by tokenmessung\n", encoding="utf-8")
+    (run_dir / GENERATED_MARKER).write_text("generated by scaldex\n", encoding="utf-8")
 
 
 def safe_slug(value: str) -> str:
@@ -131,7 +128,7 @@ def archive_previous_result(run_dir: Path, history_dir: Path) -> Path | None:
         if source.is_file():
             shutil.copy2(source, archive_dir / name)
             copied.append(name)
-    (archive_dir / GENERATED_MARKER).write_text("archived by tokenmessung\n", encoding="utf-8")
+    (archive_dir / GENERATED_MARKER).write_text("archived by scaldex\n", encoding="utf-8")
     (archive_dir / "archive.json").write_text(
         json.dumps({"source_run_dir": str(run_dir), "copied_files": copied}, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -150,7 +147,7 @@ def history_compare_command(root: Path, run_dir: Path, history_dir: Path) -> str
         run_text = str(run_dir.relative_to(root))
     except ValueError:
         run_text = str(run_dir)
-    return f"tokenmessung bench summarize {history_text} {run_text} --out tokenmessung-summary"
+    return f"scaldex bench summarize {history_text} {run_text} --out scaldex-summary"
 
 
 def render_progress(event: dict[str, object]) -> None:

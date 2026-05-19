@@ -12,10 +12,10 @@ from unittest.mock import patch
 
 
 def load_root_runner():
-    path = Path(__file__).resolve().parents[1] / "run_tokenmessung.py"
-    spec = importlib.util.spec_from_file_location("run_tokenmessung", path)
+    path = Path(__file__).resolve().parents[1] / "run_scaldex.py"
+    spec = importlib.util.spec_from_file_location("run_scaldex", path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Could not load run_tokenmessung.py")
+        raise RuntimeError("Could not load run_scaldex.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -34,7 +34,7 @@ class Cwd:
 
 
 def write_fake_outputs(root: Path) -> dict[str, Path]:
-    run_dir = root / "tokenmessung-run"
+    run_dir = root / "scaldex-run"
     run_dir.mkdir(parents=True, exist_ok=True)
     summary = run_dir / "summary.json"
     summary.write_text(json.dumps({"runs": 0}), encoding="utf-8")
@@ -76,9 +76,9 @@ def write_fake_outputs(root: Path) -> dict[str, Path]:
         encoding="utf-8",
     )
     result_md = run_dir / "RESULT.md"
-    result_md.write_text("# Tokenmessung Result\n", encoding="utf-8")
+    result_md.write_text("# scaldex result\n", encoding="utf-8")
     handoff_md = run_dir / "CODEX_HANDOFF.md"
-    handoff_md.write_text("# Tokenmessung Codex Instruction\n", encoding="utf-8")
+    handoff_md.write_text("# scaldex codex instruction\n", encoding="utf-8")
     return {"summary_json": summary, "summary_csv": summary_csv, "paired_deltas_csv": deltas, "result_json": result_json, "result_md": result_md, "codex_handoff_md": handoff_md}
 
 
@@ -87,9 +87,9 @@ class RootRunnerTests(unittest.TestCase):
         module = load_root_runner()
         help_text = module.build_parser().format_help()
         self.assertIn("Typical flow:", help_text)
-        self.assertIn("--print-result tokenmessung-run/result.json", help_text)
+        self.assertIn("--print-result scaldex-run/result.json", help_text)
         self.assertIn("CODEX_HANDOFF.md", help_text)
-        self.assertIn("Give tokenmessung-run/CODEX_HANDOFF.md to Codex", help_text)
+        self.assertIn("Give scaldex-run/CODEX_HANDOFF.md to Codex", help_text)
         self.assertIn("never stores your Codex API key", help_text)
         self.assertIn("What this means", help_text)
         self.assertIn("What to do now", help_text)
@@ -117,7 +117,7 @@ class RootRunnerTests(unittest.TestCase):
             after = {path.relative_to(root): path.read_text(encoding="utf-8") for path in root.rglob("*") if path.is_file()}
             self.assertEqual(before, after)
             self.assertEqual(error.getvalue(), "")
-            self.assertIn("=== Tokenmessung Result ===", output.getvalue())
+            self.assertIn("=== scaldex result ===", output.getvalue())
             self.assertIn("Verdict: effective", output.getvalue())
             self.assertIn("What this means:", output.getvalue())
             self.assertIn("What to do now:", output.getvalue())
@@ -165,7 +165,7 @@ class RootRunnerTests(unittest.TestCase):
             subject = root / "subject"
             subject.mkdir()
             (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
-            stale = root / "tokenmessung-run" / "raw" / "results" / "old_task__agents__r1" / "meta.json"
+            stale = root / "scaldex-run" / "raw" / "results" / "old_task__agents__r1" / "meta.json"
             stale.parent.mkdir(parents=True)
             stale.write_text('{"run_id":"old"}\n', encoding="utf-8")
 
@@ -181,18 +181,18 @@ class RootRunnerTests(unittest.TestCase):
                     progress({"event": "analysis_done"})
                 self.assertEqual(kwargs["task_ids"], ["login_test_failure"])
                 self.assertEqual(kwargs["max_run_seconds"], 300.0)
-                self.assertEqual(kwargs["analysis_dir"], (root / "tokenmessung-run").resolve())
+                self.assertEqual(kwargs["analysis_dir"], (root / "scaldex-run").resolve())
                 self.assertEqual(kwargs["subject_mode"], "package")
-                self.assertEqual(args[0], (root / "tokenmessung-run" / "raw" / "fixture").resolve())
+                self.assertEqual(args[0], (root / "scaldex-run" / "raw" / "fixture").resolve())
                 self.assertIsNone(args[1])
-                self.assertEqual(args[4], (root / "tokenmessung-run" / "raw" / "results").resolve())
+                self.assertEqual(args[4], (root / "scaldex-run" / "raw" / "results").resolve())
                 self.assertEqual(kwargs["agents_dir"], (root / "subject").resolve())
-                self.assertEqual(kwargs["workspace_root"], (root / "tokenmessung-run" / "raw" / "workspaces").resolve())
+                self.assertEqual(kwargs["workspace_root"], (root / "scaldex-run" / "raw" / "workspaces").resolve())
                 return write_fake_outputs(root)
 
             output = io.StringIO()
             error = io.StringIO()
-            with Cwd(root), redirect_stdout(output), redirect_stderr(error), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch.object(module, "create_fixture"), patch.object(module, "run_benchmark", side_effect=fake_run_benchmark):
+            with Cwd(root), redirect_stdout(output), redirect_stderr(error), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch("scaldex.app.create_fixture"), patch("scaldex.app.run_benchmark", side_effect=fake_run_benchmark):
                 code = module.main(["--model", "model"])
             self.assertEqual(code, 0)
             self.assertIn("Run 1/2 starting", error.getvalue())
@@ -224,29 +224,29 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Codex handoff:", output.getvalue())
             self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())
             self.assertNotIn("large_subject: The tested subject package is larger than 32 KiB", output.getvalue())
-            for path in (root / "tokenmessung-run").rglob("*"):
+            for path in (root / "scaldex-run").rglob("*"):
                 if path.is_file():
                     text = path.read_text(encoding="utf-8")
                     self.assertNotIn("sk-test-secret", text)
-                    self.assertNotIn("[tokenmessung]", text)
+                    self.assertNotIn("[scaldex]", text)
 
     def test_prompted_api_key_uses_prefixed_hidden_prompt(self) -> None:
         module = load_root_runner()
         with patch.dict("os.environ", {}, clear=True), patch.object(module.getpass, "getpass", return_value="sk-test-secret") as getpass_mock:
             self.assertEqual(module.ensure_api_key(), "prompt")
             self.assertEqual(os.environ.get("CODEX_API_KEY"), "sk-test-secret")
-        getpass_mock.assert_called_once_with("[tokenmessung] Enter Codex API Key: ")
+        getpass_mock.assert_called_once_with("[scaldex] Enter Codex API Key: ")
 
     def test_refuses_run_dir_that_would_delete_subject(self) -> None:
         module = load_root_runner()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            subject = root / "tokenmessung-run" / "subject"
+            subject = root / "scaldex-run" / "subject"
             subject.mkdir(parents=True)
             (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
             with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
                 with self.assertRaises(SystemExit) as ctx:
-                    module.main(["--model", "model", "--subject-dir", "tokenmessung-run/subject"])
+                    module.main(["--model", "model", "--subject-dir", "scaldex-run/subject"])
             self.assertIn("Refusing to place subject/ inside --run-dir", str(ctx.exception))
 
     def test_refuses_custom_unmarked_nonempty_run_dir(self) -> None:
@@ -262,7 +262,7 @@ class RootRunnerTests(unittest.TestCase):
             with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
                 with self.assertRaises(SystemExit) as ctx:
                     module.main(["--model", "model", "--run-dir", "custom-run"])
-            self.assertIn("Refusing to replace non-tokenmessung --run-dir", str(ctx.exception))
+            self.assertIn("Refusing to replace non-scaldex --run-dir", str(ctx.exception))
             self.assertTrue((custom_run / "user-file.txt").exists())
 
     def test_all_tasks_disables_low_cost_default(self) -> None:
@@ -278,7 +278,7 @@ class RootRunnerTests(unittest.TestCase):
                 self.assertIsNone(kwargs["task_ids"])
                 return write_fake_outputs(root)
 
-            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch.object(module, "create_fixture"), patch.object(module, "run_benchmark", side_effect=fake_run_benchmark):
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch("scaldex.app.create_fixture"), patch("scaldex.app.run_benchmark", side_effect=fake_run_benchmark):
                 self.assertEqual(module.main(["--model", "model", "--all-tasks"]), 0)
 
     def test_agents_md_subject_mode_passes_only_agents_file(self) -> None:
@@ -297,18 +297,18 @@ class RootRunnerTests(unittest.TestCase):
                 self.assertIsNone(kwargs["agents_dir"])
                 return write_fake_outputs(root)
 
-            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch.object(module, "create_fixture"), patch.object(module, "run_benchmark", side_effect=fake_run_benchmark):
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch("scaldex.app.create_fixture"), patch("scaldex.app.run_benchmark", side_effect=fake_run_benchmark):
                 self.assertEqual(module.main(["--model", "model", "--subject-mode", "agents-md"]), 0)
 
     def test_archives_previous_compact_report_before_replacing_run_dir(self) -> None:
         module = load_root_runner()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            previous = root / "tokenmessung-run"
+            previous = root / "scaldex-run"
             previous.mkdir()
-            (previous / module.GENERATED_MARKER).write_text("generated by tokenmessung\n", encoding="utf-8")
+            (previous / module.GENERATED_MARKER).write_text("generated by scaldex\n", encoding="utf-8")
             outputs = write_fake_outputs(root)
-            history = root / "tokenmessung-history"
+            history = root / "scaldex-history"
             archive = module.archive_previous_result(previous, history)
             self.assertIsNotNone(archive)
             assert archive is not None
@@ -329,9 +329,9 @@ class RootRunnerTests(unittest.TestCase):
             subject = root / "subject"
             subject.mkdir()
             (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
-            previous = root / "tokenmessung-run"
+            previous = root / "scaldex-run"
             previous.mkdir()
-            (previous / module.GENERATED_MARKER).write_text("generated by tokenmessung\n", encoding="utf-8")
+            (previous / module.GENERATED_MARKER).write_text("generated by scaldex\n", encoding="utf-8")
             write_fake_outputs(root)
 
             def fake_run_benchmark(*args: object, **kwargs: object) -> dict[str, Path]:
@@ -339,10 +339,10 @@ class RootRunnerTests(unittest.TestCase):
 
             output = io.StringIO()
             error = io.StringIO()
-            with Cwd(root), redirect_stdout(output), redirect_stderr(error), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch.object(module, "create_fixture"), patch.object(module, "run_benchmark", side_effect=fake_run_benchmark):
+            with Cwd(root), redirect_stdout(output), redirect_stderr(error), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch("scaldex.app.create_fixture"), patch("scaldex.app.run_benchmark", side_effect=fake_run_benchmark):
                 self.assertEqual(module.main(["--model", "model"]), 0)
             self.assertIn("Archived previous compact report", error.getvalue())
-            self.assertIn("Compare history: tokenmessung bench summarize tokenmessung-history tokenmessung-run --out tokenmessung-summary", output.getvalue())
+            self.assertIn("Compare history: scaldex bench summarize scaldex-history scaldex-run --out scaldex-summary", output.getvalue())
 
 
 if __name__ == "__main__":

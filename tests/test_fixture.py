@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tokenmessung.fixture import create_fixture
+from scaldex.fixture import create_fixture
 
 
 class FixtureTests(unittest.TestCase):
