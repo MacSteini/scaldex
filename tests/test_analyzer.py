@@ -109,7 +109,7 @@ class AnalyzerTests(unittest.TestCase):
     def test_codex_handoff_contract_covers_all_next_actions(self) -> None:
         cases = [
             ("eligible_for_decision_run", "Tell the user to run this decision-grade command", "Do not optimize AGENTS.md/.codex yet"),
-            ("stop_fix_quality_or_task_behavior", "Analyze the quality, expected-file", "Do not treat token reductions as wins"),
+            ("stop_fix_quality_or_task_behavior", "Analyze the listed quality or integrity blockers", "Do not treat token reductions as wins"),
             ("record_decision_grade_win", "Record this report as decision-grade evidence", "Do not make a global efficiency claim"),
             ("do_not_claim_efficiency", "Analyze task-specific behaviour", "Do not claim token efficiency"),
         ]

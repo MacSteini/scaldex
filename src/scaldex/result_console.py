@@ -77,7 +77,7 @@ def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
             return "Give the Codex handoff to Codex, or run the same task set with --repeats 3 before trusting the result."
         return "Give the Codex handoff to Codex, or run this same task with --repeats 3 before trusting the result."
     if next_action == "stop_fix_quality_or_task_behavior":
-        return "Give the Codex handoff to Codex to fix quality, expected-file, structured-output, warning, or path issues before spending more money."
+        return "Give the Codex handoff to Codex; it lists the exact quality or integrity blockers to fix before spending more money."
     if next_action == "record_decision_grade_win":
         if scope == "result_set":
             return "Give the Codex handoff to Codex to record this evidence and check global claim eligibility."
@@ -94,7 +94,7 @@ def handoff_purpose(decision: dict[str, Any]) -> str:
     if next_action == "eligible_for_decision_run":
         return "Codex gets the exact decision-run request and should not optimize yet."
     if next_action == "stop_fix_quality_or_task_behavior":
-        return "Codex gets the quality or output blockers to fix before any more paid runs."
+        return "Codex gets the exact quality or output blockers to fix before any more paid runs."
     if next_action == "record_decision_grade_win":
         return "Codex gets a decision-grade win to record and compare against other reports."
     if next_action == "do_not_claim_efficiency":
@@ -145,7 +145,30 @@ def quality_sentence(quality: dict[str, Any]) -> str:
     control = quality.get("control_success_rate", "n/a")
     if agents == 1.0 and control == 1.0:
         return f"Both sides completed all required runs successfully: agents success rate 100% ({agents}), control success rate 100% ({control})."
-    return f"Quality gate needs attention: agents success rate {agents}, control success rate {control}."
+    return (
+        "Quality gate failed: an agents/control success rate of 1.0 means every run passed the task checks; "
+        f"this result has agents {agents}, control {control}."
+    )
+
+
+def blocker_sentences(
+    quality: dict[str, Any],
+    benchmark_warnings: object,
+    final_relevant: dict[str, Any],
+) -> list[str]:
+    lines: list[str] = []
+    if quality.get("agents_success_rate") != 1.0 or quality.get("control_success_rate") != 1.0:
+        lines.append("Blocker: at least one side failed the task quality checks, so token savings cannot be treated as a win.")
+    if isinstance(benchmark_warnings, list) and benchmark_warnings:
+        readable = "; ".join(f"{warning} ({explain_warning(str(warning))})" for warning in benchmark_warnings)
+        lines.append(f"Blocker warnings: {readable}.")
+    missing_paths = final_relevant.get("missing_expected_paths", [])
+    if isinstance(missing_paths, list) and missing_paths:
+        files = ", ".join(f"`{path}`" for path in missing_paths)
+        lines.append(f"Missing expected relevant_files entries: {files}.")
+    elif isinstance(benchmark_warnings, list) and "missing_expected_relevant_files" in benchmark_warnings:
+        lines.append("Missing expected relevant_files entries were detected; this report does not include path-level detail.")
+    return lines
 
 
 def subject_sentence(subject: dict[str, Any]) -> str:
@@ -252,6 +275,8 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
         print(variant_medians_sentence(primary))
     if isinstance(quality, dict):
         print(quality_sentence(quality))
+        for line in blocker_sentences(quality, benchmark_warnings, final_relevant if isinstance(final_relevant, dict) else {}):
+            print(line)
     if isinstance(reliability, dict):
         print(reliability_sentence(reliability))
         for warning in reliability.get("warnings", []):

@@ -344,6 +344,7 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
         "other_text_bytes": other_bytes,
         "large_text_events_over_20kb": large_text_events,
         "expected_files_count": len(expected_files),
+        "expected_files": ";".join(expected_files),
         "expected_files_found_count": len(expected_files_found),
         "expected_files_found": ";".join(expected_files_found),
         "final_relevant_files_count": len(normalized_relevant_files),
@@ -598,7 +599,7 @@ def decision_grade(result: dict[str, Any]) -> bool:
 
 
 DECISION_EXPLANATIONS = {
-    "quality_gate_failed": "Stop before spending more: quality, warnings, expected files, structured output, or normalized repo-relative paths failed.",
+    "quality_gate_failed": "Stop before spending more: one or more quality or integrity gates failed. The blocker lines identify the exact issue to fix before rerunning.",
     "smoke_passed_needs_decision_grade": "This smoke run is clean; repeat the same task with at least three paired runs before treating the result as stable.",
     "primary_delta_negative_quality_passed": "Decision-grade evidence passed quality gates and reduced paired median non-cached input tokens for this task.",
     "primary_delta_non_negative": "Quality passed, but the instruction package did not reduce the paired median non-cached input metric; do not claim efficiency for this task.",
@@ -724,7 +725,7 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
         {
             path
             for row in rows
-            for path in str(row.get("expected_files_found", "")).split(";")
+            for path in str(row.get("expected_files", "")).split(";")
             if path and path not in str(row.get("expected_relevant_files_found", "")).split(";")
         }
     )
@@ -902,7 +903,7 @@ def codex_requested_action(result: dict[str, Any]) -> str:
     if next_action == "eligible_for_decision_run":
         return f"Tell the user to run this decision-grade command exactly before making optimisation claims: {decision_run_command(result)}"
     if next_action == "stop_fix_quality_or_task_behavior":
-        return "Analyze the quality, expected-file, structured-output, warning, or path blockers first; propose minimal fixes before any more paid benchmarking."
+        return "Analyze the listed quality or integrity blockers first; propose minimal fixes before any more paid benchmarking."
     if next_action == "record_decision_grade_win":
         return "Record this report as decision-grade evidence and check whether enough matching decision-grade reports exist before allowing any global efficiency claim."
     if next_action == "do_not_claim_efficiency":
@@ -1079,7 +1080,7 @@ def handoff_request(decision: dict[str, Any]) -> str:
             return "Run decision-grade measurements for this same task set before making package optimisation claims."
         return "Run a decision-grade measurement for this same task before making package optimisation claims."
     if next_action == "stop_fix_quality_or_task_behavior":
-        return "Fix quality, expected-file, structured-output, or path issues before spending more runs on efficiency."
+        return "Fix the listed quality or integrity blockers before spending more runs on efficiency."
     if next_action == "record_decision_grade_win":
         if scope == "result_set":
             return "Record this as decision-grade evidence and verify global claim eligibility with `scaldex bench summarize` before making a public claim."

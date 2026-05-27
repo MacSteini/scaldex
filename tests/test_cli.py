@@ -244,10 +244,43 @@ class CliTests(unittest.TestCase):
             self.assertIn("Report identity: batch batch-test; subject fingerprint subject-test; run config fingerprint config-test.", text)
             self.assertIn("Path integrity: final relevant files normalize to repo-relative paths, so Codex can compare reports safely.", text)
 
+    def test_result_show_prints_quality_blocker_details(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            result = base / "result.json"
+            result.write_text(
+                json.dumps(
+                    {
+                        "verdict": "not_effective",
+                        "primary_delta": {"agents_minus_control": 384, "percent": 3.2, "agents_median": 12365, "control_median": 11981},
+                        "quality": {"agents_success_rate": 0.0, "control_success_rate": 1.0},
+                        "benchmark_warnings": ["missing_expected_files", "missing_expected_relevant_files"],
+                        "final_relevant_files": {
+                            "normalized_repo_relative_only": True,
+                            "missing_expected_paths": ["packages/export-cli/src/index.ts"],
+                        },
+                        "reliability": {"level": "low", "paired_runs": 1, "warnings": ["low_sample_size"]},
+                        "subject": {"mode": "package", "source_file_count": 1, "total_bytes": 9, "warnings": []},
+                        "decision": {
+                            "next_action": "stop_fix_quality_or_task_behavior",
+                            "scope": "task",
+                            "explanation": "fixture explanation",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            code, text = self.run_cli_text(["result", "show", str(result)])
+            self.assertEqual(code, 0)
+            self.assertIn("Quality gate failed: an agents/control success rate of 1.0 means every run passed the task checks", text)
+            self.assertIn("Blocker: at least one side failed the task quality checks", text)
+            self.assertIn("Blocker warnings: missing_expected_files", text)
+            self.assertIn("Missing expected relevant_files entries: `packages/export-cli/src/index.ts`.", text)
+
     def test_result_show_prints_human_next_steps_for_all_actions(self) -> None:
         cases = [
             ("eligible_for_decision_run", "Give the Codex handoff to Codex, or run this same task with --repeats 3"),
-            ("stop_fix_quality_or_task_behavior", "Give the Codex handoff to Codex to fix quality"),
+            ("stop_fix_quality_or_task_behavior", "Give the Codex handoff to Codex; it lists the exact quality or integrity blockers"),
             ("record_decision_grade_win", "Give the Codex handoff to Codex to compare this win"),
             ("do_not_claim_efficiency", "Give the Codex handoff to Codex to inspect task behaviour"),
         ]
