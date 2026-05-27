@@ -21,6 +21,7 @@ PROCESS_TIMEOUT_EXIT_CODE = 124
 GENERATED_MARKER = ".scaldex-generated"
 IGNORED_SUBJECT_FILE_NAMES = {".DS_Store"}
 IGNORED_SUBJECT_DIR_NAMES = {".git", "__pycache__"}
+CODEX_CHILD_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE")
 RUN_ISOLATION = {
     "ephemeral": True,
     "ignore_user_config": True,
@@ -31,14 +32,23 @@ RUN_ISOLATION = {
 INSTRUCTION_ENTRY_FILES = ("AGENTS.md", "AGENTS.override.md")
 
 
-def command_output(args: list[str], cwd: Path | None = None) -> str:
-    result = subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+def codex_child_env(codex_home: Path | None = None) -> dict[str, str]:
+    env = {key: value for key in CODEX_CHILD_ENV_KEYS if (value := os.environ.get(key))}
+    if api_key := os.environ.get("CODEX_API_KEY"):
+        env["CODEX_API_KEY"] = api_key
+    if codex_home is not None:
+        env["CODEX_HOME"] = str(codex_home)
+    return env
+
+
+def command_output(args: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
+    result = subprocess.run(args, cwd=cwd, env=env, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return result.stdout.strip() or result.stderr.strip()
 
 
 def codex_version() -> str:
     try:
-        return command_output(["codex", "--version"])
+        return command_output(["codex", "--version"], env=codex_child_env())
     except (FileNotFoundError, subprocess.CalledProcessError):
         return ""
 
@@ -56,7 +66,7 @@ def fixture_is_git_repo(fixture: Path) -> bool:
 
 
 def codex_exec_help() -> str:
-    return command_output(["codex", "exec", "--help"])
+    return command_output(["codex", "exec", "--help"], env=codex_child_env())
 
 
 def codex_exec_capabilities() -> dict[str, bool]:
@@ -138,16 +148,19 @@ def remove_control_instructions(workdir: Path) -> None:
 
 
 def install_agents_file(workdir: Path, agents_file: Path) -> None:
+    reject_subject_symlink(agents_file, agents_file.name)
     remove_control_instructions(workdir)
     target_name = agents_file.name if agents_file.name in INSTRUCTION_ENTRY_FILES else "AGENTS.md"
     shutil.copy2(agents_file, workdir / target_name)
 
 
 def install_agents_dir(workdir: Path, agents_dir: Path) -> None:
+    iter_subject_files(None, agents_dir)
     remove_control_instructions(workdir)
     for source in agents_dir.iterdir():
         if source.name == ".git":
             continue
+        reject_subject_symlink(source, source.name)
         target = workdir / source.name
         if source.is_dir():
             if target.exists() and not target.is_dir():
@@ -163,6 +176,11 @@ def should_ignore_subject_path(path: Path) -> bool:
     if path.name in IGNORED_SUBJECT_FILE_NAMES:
         return True
     return any(part in IGNORED_SUBJECT_DIR_NAMES for part in path.parts)
+
+
+def reject_subject_symlink(path: Path, relative: str) -> None:
+    if path.is_symlink():
+        raise ValueError(f"Subject package contains unsupported symlink: {relative}")
 
 
 def hash_json(value: Any) -> str:
@@ -185,14 +203,19 @@ def find_instruction_entry_file(subject_dir: Path) -> Path | None:
 def iter_subject_files(agents_file: Path | None, agents_dir: Path | None) -> list[tuple[str, Path]]:
     if agents_file is not None:
         relative = agents_file.name if agents_file.name in INSTRUCTION_ENTRY_FILES else "AGENTS.md"
+        reject_subject_symlink(agents_file, relative)
         return [(relative, agents_file)]
     assert agents_dir is not None
     files: list[tuple[str, Path]] = []
     for path in agents_dir.rglob("*"):
         relative = path.relative_to(agents_dir)
-        if should_ignore_subject_path(relative) or not path.is_file():
+        if should_ignore_subject_path(relative):
             continue
-        files.append((relative.as_posix(), path))
+        relative_text = relative.as_posix()
+        reject_subject_symlink(path, relative_text)
+        if not path.is_file():
+            continue
+        files.append((relative_text, path))
     files.sort(key=lambda item: item[0])
     return files
 
@@ -474,8 +497,7 @@ def run_one(
     }
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
+    env = codex_child_env(codex_home)
     emit_progress(
         progress,
         {

@@ -96,8 +96,7 @@ def validate_output_layout(root: Path, subject_dir: Path, run_dir: Path, history
 
 
 def reset_run_dir(run_dir: Path, root: Path) -> None:
-    default_run_dir = (root / "scaldex-run").resolve()
-    if run_dir.exists() and run_dir != default_run_dir and any(run_dir.iterdir()) and not (run_dir / GENERATED_MARKER).exists():
+    if run_dir.exists() and any(run_dir.iterdir()) and not (run_dir / GENERATED_MARKER).exists():
         raise SystemExit(f"Refusing to replace non-scaldex --run-dir without {GENERATED_MARKER}: {run_dir}")
     if run_dir.exists():
         shutil.rmtree(run_dir)
@@ -227,7 +226,10 @@ def main(argv: list[str] | None = None) -> int:
         agents_dir = subject_dir
     else:
         agents_file = instruction_entry_file
-    subject_audit = audit_subject_source(agents_file, agents_dir, subject_mode=args.subject_mode)
+    try:
+        subject_audit = audit_subject_source(agents_file, agents_dir, subject_mode=args.subject_mode)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     batch_id = new_batch_id()
     status(
         "Subject audit: {mode}, {files} file(s), size {size}.".format(

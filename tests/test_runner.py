@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scaldex.fixture import create_fixture
-from scaldex.runner import GENERATED_MARKER, audit_subject_source, copy_fixture, find_instruction_entry_file, init_git_snapshot, install_agents_dir, install_agents_file, prepare_generated_dir, remove_control_instructions, run_benchmark, run_one, selected_tasks, subject_fingerprint, synthesize_benchmark, validate_benchmark_inputs
+from scaldex.runner import GENERATED_MARKER, audit_subject_source, codex_child_env, copy_fixture, find_instruction_entry_file, init_git_snapshot, install_agents_dir, install_agents_file, prepare_generated_dir, remove_control_instructions, run_benchmark, run_one, selected_tasks, subject_fingerprint, synthesize_benchmark, validate_benchmark_inputs
 
 
 class FakeProcess:
@@ -100,6 +100,55 @@ class RunnerVariantTests(unittest.TestCase):
             self.assertEqual((workdir / "AGENTS.md").read_text(encoding="utf-8"), "# Agents\n")
             self.assertEqual((workdir / "AGENTS.override.md").read_text(encoding="utf-8"), "# Override\n")
             self.assertTrue((workdir / ".codex" / "instructions.md").exists())
+
+    def test_subject_audit_rejects_file_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            outside = base / "outside-secret.txt"
+            outside.write_text("secret\n", encoding="utf-8")
+            subject = base / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            try:
+                (subject / "leak.txt").symlink_to(outside)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with self.assertRaisesRegex(ValueError, "unsupported symlink: leak.txt"):
+                audit_subject_source(None, subject, subject_mode="package")
+
+    def test_agents_dir_install_rejects_directory_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            outside = base / "outside-dir"
+            outside.mkdir()
+            (outside / "secret.txt").write_text("secret\n", encoding="utf-8")
+            subject = base / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            try:
+                (subject / "linked-dir").symlink_to(outside, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            workdir = base / "work"
+            workdir.mkdir()
+            with self.assertRaisesRegex(ValueError, "unsupported symlink: linked-dir"):
+                install_agents_dir(workdir, subject)
+            self.assertFalse((workdir / "linked-dir" / "secret.txt").exists())
+
+    def test_agents_file_install_rejects_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            outside = base / "outside-agents.md"
+            outside.write_text("# Outside\n", encoding="utf-8")
+            agents_file = base / "AGENTS.md"
+            try:
+                agents_file.symlink_to(outside)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            workdir = base / "work"
+            workdir.mkdir()
+            with self.assertRaisesRegex(ValueError, "unsupported symlink: AGENTS.md"):
+                install_agents_file(workdir, agents_file)
 
     def test_subject_audit_reports_package_size_and_codex_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -303,6 +352,40 @@ class RunnerVariantTests(unittest.TestCase):
                 run_one(fixture=fixture, agents_file=agents_file, agents_dir=None, model="model", out=base / "keep", task=task, variant="agents", repeat=1, run_order=1, keep_workdirs=True)
                 kept_meta = (base / "keep" / "task__agents__r1" / "meta.json").read_text(encoding="utf-8")
                 self.assertIn('"workdir_cleanup": "kept"', kept_meta)
+
+    def test_codex_child_env_omits_unrelated_parent_secrets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / "codex-home"
+            with patch.dict("os.environ", {"CODEX_API_KEY": "sk-test", "PATH": "/bin", "AWS_SECRET_ACCESS_KEY": "secret"}, clear=True):
+                env = codex_child_env(codex_home)
+            self.assertEqual(env["CODEX_API_KEY"], "sk-test")
+            self.assertEqual(env["CODEX_HOME"], str(codex_home))
+            self.assertEqual(env["PATH"], "/bin")
+            self.assertNotIn("AWS_SECRET_ACCESS_KEY", env)
+
+    def test_run_one_passes_minimal_child_environment(self) -> None:
+        class FakeResult:
+            returncode = 0
+
+        captured_env: dict[str, str] = {}
+
+        def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+            captured_env.update(kwargs["env"])
+            return FakeProcess()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = base / "fixture"
+            fixture.mkdir()
+            agents_file = fixture / "AGENTS.md"
+            agents_file.write_text("# Agents\n", encoding="utf-8")
+            task = {"id": "task", "prompt": "prompt", "expected_files": [], "expected_terms": []}
+            with patch.dict("os.environ", {"CODEX_API_KEY": "sk-test", "PATH": "/bin", "PRIVATE_TOKEN": "secret"}, clear=True), patch("scaldex.runner.subprocess.run", return_value=FakeResult()), patch("scaldex.runner.subprocess.Popen", side_effect=fake_popen), patch("scaldex.runner.fixture_commit", return_value="abc"), patch("scaldex.runner.codex_version", return_value="codex-test"):
+                run_one(fixture=fixture, agents_file=agents_file, agents_dir=None, model="model", out=base / "results", task=task, variant="agents", repeat=1, run_order=1)
+        self.assertEqual(captured_env["CODEX_API_KEY"], "sk-test")
+        self.assertEqual(captured_env["PATH"], "/bin")
+        self.assertIn("CODEX_HOME", captured_env)
+        self.assertNotIn("PRIVATE_TOKEN", captured_env)
 
     def test_workspace_root_contains_and_cleans_workspaces(self) -> None:
         class FakeResult:
