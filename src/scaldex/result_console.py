@@ -67,6 +67,18 @@ def artifact_path(result: dict[str, object], key: str, result_dir: Path | None =
     return None
 
 
+def display_path(path: str | None) -> str | None:
+    if not path:
+        return path
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        return path
+    try:
+        return str(candidate.relative_to(Path.cwd()))
+    except ValueError:
+        return str(candidate)
+
+
 def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
     if synthetic:
         return "Use this only for scaldex development or CI checks. It does not measure your real instruction package."
@@ -252,7 +264,7 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     codex_handoff = artifact_path(result, "codex_handoff_md", result_dir)
     print("Codex handoff")
     if codex_handoff:
-        print(f"- For Codex-assisted follow-up, use: {codex_handoff}")
+        print(f"- For Codex-assisted follow-up, use: {display_path(codex_handoff)}")
     else:
         print("- Codex-assisted follow-up file was not found beside this result.")
     print(f"- Purpose: {handoff_purpose(decision)}")
@@ -301,10 +313,10 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
             print(f"Subject notes: {len(subject_warnings)} note(s); see RESULT.md for details.")
     print()
     print("Report files:")
-    print(f"- Human report: {artifact_path(result, 'result_md', result_dir)}")
-    print(f"- Machine report: {artifact_path(result, 'result_json', result_dir)}")
+    print(f"- Human report: {display_path(artifact_path(result, 'result_md', result_dir))}")
+    print(f"- Machine report: {display_path(artifact_path(result, 'result_json', result_dir))}")
     if codex_handoff:
-        print(f"- Codex handoff: {codex_handoff}")
+        print(f"- Codex handoff: {display_path(codex_handoff)}")
     if compare_history_command:
         print(f"Compare history: {compare_history_command}")
     print()

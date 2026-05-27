@@ -9,7 +9,8 @@ from typing import Any
 from .schemas import TASKS
 
 
-GLOBAL_TASK_THRESHOLD = 3
+GLOBAL_TASK_THRESHOLD = 5
+EXPECTED_TASK_IDS = {str(task["id"]) for task in TASKS}
 
 
 def load_result_json(path: Path) -> dict[str, Any]:
@@ -142,9 +143,12 @@ def result_rows(path: Path, result: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def quality_ok(row: dict[str, Any]) -> bool:
+    return float(row.get("agents_quality", 0) or 0) == 1.0 and float(row.get("control_quality", 0) or 0) == 1.0
+
+
+def integrity_ok(row: dict[str, Any]) -> bool:
     return (
-        float(row.get("agents_quality", 0) or 0) == 1.0
-        and float(row.get("control_quality", 0) or 0) == 1.0
+        quality_ok(row)
         and not row.get("benchmark_warnings")
         and bool(row.get("normalized_repo_relative_relevant_files_only"))
     )
@@ -170,13 +174,25 @@ def build_multi_summary(paths: list[Path]) -> dict[str, Any]:
     effective_tasks = {
         str(row["task_id"])
         for row in decision_grade_rows
-        if row["verdict"] == "effective" and quality_ok(row)
+        if str(row["task_id"]) in EXPECTED_TASK_IDS and row["verdict"] == "effective" and integrity_ok(row)
     }
     measured_decision_tasks = {str(row["task_id"]) for row in decision_grade_rows}
+    measured_expected_decision_tasks = measured_decision_tasks & EXPECTED_TASK_IDS
+    missing_expected_decision_tasks = sorted(EXPECTED_TASK_IDS - measured_decision_tasks)
+    unexpected_decision_tasks = sorted(measured_decision_tasks - EXPECTED_TASK_IDS)
+    integrity_blocked_tasks = sorted(
+        {
+            str(row["task_id"])
+            for row in decision_grade_rows
+            if str(row["task_id"]) in EXPECTED_TASK_IDS and not integrity_ok(row)
+        }
+    )
     expected_task_count = len(TASKS)
     global_allowed = (
         len(effective_tasks) >= GLOBAL_TASK_THRESHOLD
-        and len(measured_decision_tasks) >= expected_task_count
+        and not missing_expected_decision_tasks
+        and not unexpected_decision_tasks
+        and not integrity_blocked_tasks
         and not warnings
     )
     global_blockers: list[str] = []
@@ -184,22 +200,31 @@ def build_multi_summary(paths: list[Path]) -> dict[str, Any]:
         global_blockers.append(
             f"effective_decision_grade_tasks_below_threshold:{len(effective_tasks)}/{GLOBAL_TASK_THRESHOLD}"
         )
-    if len(measured_decision_tasks) < expected_task_count:
+    if missing_expected_decision_tasks:
         global_blockers.append(
-            f"decision_grade_tasks_incomplete:{len(measured_decision_tasks)}/{expected_task_count}"
+            f"decision_grade_tasks_incomplete:{len(measured_expected_decision_tasks)}/{expected_task_count}"
         )
+        global_blockers.append(f"decision_grade_tasks_missing:{','.join(missing_expected_decision_tasks)}")
+    if unexpected_decision_tasks:
+        global_blockers.append(f"unexpected_decision_grade_tasks:{','.join(unexpected_decision_tasks)}")
+    if integrity_blocked_tasks:
+        global_blockers.append(f"decision_grade_quality_or_integrity_blockers:{','.join(integrity_blocked_tasks)}")
     global_blockers.extend(warnings)
     return {
         "global_token_efficiency_claim_allowed": global_allowed,
         "global_decision": "claim_global_token_efficiency" if global_allowed else "do_not_claim_global_efficiency",
         "global_blockers": global_blockers,
         "effective_decision_grade_task_count": len(effective_tasks),
-        "decision_grade_task_count": len(measured_decision_tasks),
+        "decision_grade_task_count": len(measured_expected_decision_tasks),
+        "observed_decision_grade_task_count": len(measured_decision_tasks),
         "expected_task_count": expected_task_count,
         "subject_fingerprints": subject_fingerprints,
         "warnings": warnings,
         "notes": notes,
         "mixed_grade_tasks": mixed_grade_tasks,
+        "integrity_blocked_tasks": integrity_blocked_tasks,
+        "missing_expected_decision_tasks": missing_expected_decision_tasks,
+        "unexpected_decision_tasks": unexpected_decision_tasks,
         "tasks": rows,
     }
 
@@ -233,6 +258,8 @@ def plain_global_explanation(summary: dict[str, Any]) -> str:
         return "The summary does not yet contain decision-grade evidence for all expected tasks."
     if any(str(blocker).startswith("effective_decision_grade_tasks_below_threshold:") for blocker in blockers):
         return "Too few decision-grade tasks are effective, so a global efficiency claim would be misleading."
+    if any(str(blocker).startswith("decision_grade_quality_or_integrity_blockers:") for blocker in blockers):
+        return "One or more decision-grade task reports have quality or integrity blockers, so a global efficiency claim would be misleading."
     return "The evidence set has blockers. Read the warnings and task table before making any claim."
 
 
@@ -267,7 +294,7 @@ def format_multi_summary_console(summary: dict[str, Any], paths: dict[str, Path]
         f"What to do now: {next_summary_action(summary)}",
         "",
         "Evidence:",
-        f"- Effective decision-grade tasks: {summary['effective_decision_grade_task_count']}/{GLOBAL_TASK_THRESHOLD} needed",
+        f"- Effective decision-grade tasks: {summary['effective_decision_grade_task_count']} effective; {GLOBAL_TASK_THRESHOLD} needed",
         f"- Decision-grade tasks observed: {summary['decision_grade_task_count']}/{summary['expected_task_count']} expected",
     ]
     warnings = summary.get("warnings", [])

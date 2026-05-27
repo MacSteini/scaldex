@@ -76,11 +76,20 @@ A smoke run uses `--repeats 1`. Treat it as a cost check and route finder. A cle
 
 A decision-grade run uses `--repeats 3` or more. It costs more, but it gives enough paired repeats for task-level evidence.
 
-One decision-grade task is still only one task. A global efficiency claim needs enough decision-grade task reports, and they must share the same subject fingerprint.
+One decision-grade task is still only one task. A global efficiency claim needs all eight built-in tasks as decision-grade reports, and they must share the same subject fingerprint.
 
 ## Global claims
 
 scaldex withholds global token-efficiency claims unless enough decision-grade tasks are effective and quality is clean.
+
+For the built-in task set, a global claim requires:
+
+- decision-grade evidence for all eight built-in tasks
+- at least five effective task results
+- quality `1.0` for both `agents` and `control` on every counted decision-grade task
+- no blocking benchmark warnings or path-integrity failures in the decision-grade evidence set
+- one shared subject fingerprint across the reports used for the summary
+- no unknown task IDs standing in for missing built-in tasks
 
 The summary command checks this across existing reports:
 

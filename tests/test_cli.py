@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
 from scaldex.cli import main
+
+
+@contextmanager
+def cwd(path: Path):
+    old = Path.cwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(old)
 
 
 class CliTests(unittest.TestCase):
@@ -336,10 +347,13 @@ class CliTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            code, text = self.run_cli_text(["result", "show", str(result)])
+            with cwd(base):
+                code, text = self.run_cli_text(["result", "show", "history/result.json"])
             self.assertEqual(code, 0)
-            self.assertIn(f"- For Codex-assisted follow-up, use: {local_handoff.resolve()}", text)
-            self.assertIn(f"- Human report: {local_report.resolve()}", text)
+            self.assertIn("- For Codex-assisted follow-up, use: history/CODEX_HANDOFF.md", text)
+            self.assertIn("- Human report: history/RESULT.md", text)
+            self.assertNotIn(str(local_handoff.resolve()), text)
+            self.assertNotIn(str(local_report.resolve()), text)
             self.assertNotIn(str(stale_handoff), text)
 
     def test_result_show_missing_result_exits_cleanly(self) -> None:

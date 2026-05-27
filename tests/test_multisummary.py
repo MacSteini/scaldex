@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from scaldex.multisummary import build_multi_summary, discover_result_jsons, format_multi_summary_console, summarize_results
+from scaldex.schemas import TASKS
 
 
 def write_result(
@@ -108,21 +109,73 @@ class MultiSummaryTests(unittest.TestCase):
             paths = discover_result_jsons([direct, base / "runs"])
             self.assertEqual(paths, sorted([direct.resolve(), nested.resolve()]))
 
-    def test_build_multi_summary_allows_global_claim_for_three_of_four_effective_tasks(self) -> None:
+    def test_build_multi_summary_allows_global_claim_for_five_of_eight_effective_tasks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            tasks = ["login_test_failure", "export_cli_location", "feature_x_plan", "release_scope_audit"]
+            tasks = [str(task["id"]) for task in TASKS]
             paths = []
             for index, task in enumerate(tasks):
                 result_path = base / task / "result.json"
-                write_result(result_path, task, verdict="effective" if index < 3 else "not_effective")
+                write_result(result_path, task, verdict="effective" if index < 5 else "not_effective")
                 paths.append(result_path)
             summary = build_multi_summary(paths)
             self.assertTrue(summary["global_token_efficiency_claim_allowed"])
             self.assertEqual(summary["global_decision"], "claim_global_token_efficiency")
             self.assertEqual(summary["global_blockers"], [])
-            self.assertEqual(summary["effective_decision_grade_task_count"], 3)
-            self.assertEqual(summary["decision_grade_task_count"], 4)
+            self.assertEqual(summary["effective_decision_grade_task_count"], 5)
+            self.assertEqual(summary["decision_grade_task_count"], 8)
+
+    def test_build_multi_summary_blocks_four_of_eight_effective_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            tasks = [str(task["id"]) for task in TASKS]
+            paths = []
+            for index, task in enumerate(tasks):
+                result_path = base / task / "result.json"
+                write_result(result_path, task, verdict="effective" if index < 4 else "not_effective")
+                paths.append(result_path)
+            summary = build_multi_summary(paths)
+            self.assertFalse(summary["global_token_efficiency_claim_allowed"])
+            self.assertIn("effective_decision_grade_tasks_below_threshold:4/5", summary["global_blockers"])
+            self.assertEqual(summary["decision_grade_task_count"], 8)
+
+    def test_build_multi_summary_requires_exact_builtin_task_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            tasks = [str(task["id"]) for task in TASKS[:-1]] + ["custom_task"]
+            paths = []
+            for index, task in enumerate(tasks):
+                result_path = base / task / "result.json"
+                write_result(result_path, task, verdict="effective" if index < 5 else "not_effective")
+                paths.append(result_path)
+            summary = build_multi_summary(paths)
+            self.assertFalse(summary["global_token_efficiency_claim_allowed"])
+            self.assertEqual(summary["decision_grade_task_count"], 7)
+            self.assertEqual(summary["observed_decision_grade_task_count"], 8)
+            self.assertEqual(summary["missing_expected_decision_tasks"], ["large_repo_noise"])
+            self.assertEqual(summary["unexpected_decision_tasks"], ["custom_task"])
+            self.assertIn("decision_grade_tasks_incomplete:7/8", summary["global_blockers"])
+            self.assertIn("decision_grade_tasks_missing:large_repo_noise", summary["global_blockers"])
+            self.assertIn("unexpected_decision_grade_tasks:custom_task", summary["global_blockers"])
+
+    def test_build_multi_summary_blocks_integrity_failures_even_with_five_effective_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            tasks = [str(task["id"]) for task in TASKS]
+            paths = []
+            for index, task in enumerate(tasks):
+                result_path = base / task / "result.json"
+                write_result(
+                    result_path,
+                    task,
+                    verdict="effective" if index < 5 else "not_effective",
+                    warnings=["missing_expected_files"] if index == 7 else None,
+                )
+                paths.append(result_path)
+            summary = build_multi_summary(paths)
+            self.assertFalse(summary["global_token_efficiency_claim_allowed"])
+            self.assertIn("decision_grade_quality_or_integrity_blockers:large_repo_noise", summary["global_blockers"])
+            self.assertEqual(summary["integrity_blocked_tasks"], ["large_repo_noise"])
 
     def test_build_multi_summary_lets_decision_report_supersede_matching_smoke_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -148,7 +201,7 @@ class MultiSummaryTests(unittest.TestCase):
             summary = build_multi_summary([first, second])
             self.assertFalse(summary["global_token_efficiency_claim_allowed"])
             self.assertEqual(summary["global_decision"], "do_not_claim_global_efficiency")
-            self.assertIn("effective_decision_grade_tasks_below_threshold:2/3", summary["global_blockers"])
+            self.assertIn("effective_decision_grade_tasks_below_threshold:2/5", summary["global_blockers"])
             self.assertIn("mixed_or_missing_subject_fingerprints", summary["global_blockers"])
             self.assertIn("mixed_or_missing_subject_fingerprints", summary["warnings"])
 
@@ -182,7 +235,7 @@ class MultiSummaryTests(unittest.TestCase):
             self.assertIn("Plain explanation:", report)
             self.assertIn("What to do now:", report)
             self.assertIn("## Global Blockers", report)
-            self.assertIn("decision_grade_tasks_incomplete:1/4", report)
+            self.assertIn("decision_grade_tasks_incomplete:1/8", report)
             self.assertIn("## Notes", report)
             self.assertIn("login_test_failure", report)
 

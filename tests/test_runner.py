@@ -274,7 +274,7 @@ class RunnerVariantTests(unittest.TestCase):
             out = Path(tmp) / "synthetic"
             paths = synthesize_benchmark(out, repeats=2, seed=1)
             self.assertTrue(paths["summary_csv"].exists())
-            self.assertEqual(len(list(out.glob("*/meta.json"))), 16)
+            self.assertEqual(len(list(out.glob("*/meta.json"))), 32)
             self.assertTrue((out / "paired-deltas.csv").read_text(encoding="utf-8"))
             first_meta = json.loads(next(out.glob("*/meta.json")).read_text(encoding="utf-8"))
             second_out = Path(tmp) / "synthetic-again"
@@ -404,6 +404,19 @@ class RunnerVariantTests(unittest.TestCase):
         self.assertEqual([task["id"] for task in tasks], ["login_test_failure"])
         with self.assertRaises(ValueError):
             selected_tasks(["missing"])
+
+    def test_all_builtin_task_ids_are_selectable(self) -> None:
+        expected = [
+            "login_test_failure",
+            "export_cli_location",
+            "feature_x_plan",
+            "release_scope_audit",
+            "small_edit_fix",
+            "test_failure_with_logs",
+            "docs_update_scope",
+            "large_repo_noise",
+        ]
+        self.assertEqual([task["id"] for task in selected_tasks(expected)], expected)
 
 
 if __name__ == "__main__":

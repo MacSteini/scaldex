@@ -61,6 +61,62 @@ Expected signals:
 
 Use this task when you want to test audit discipline, release-scope discovery and repo-relative `relevant_files`.
 
+## `small_edit_fix`
+
+Purpose: minimal-fix behaviour.
+
+Codex must identify the smallest sensible code change for a failing discount test without changing files or proposing a broad refactor.
+
+Expected signals:
+
+- `services/billing/src/discount.ts`
+- `services/billing/tests/discount.spec.ts`
+- relevant terms such as `applyDiscount`, `percentOff` and `discountedTotal`
+
+Use this task when you want to test whether your package keeps Codex focused on a narrow fix instead of widening the scope.
+
+## `test_failure_with_logs`
+
+Purpose: log-discipline behaviour.
+
+Codex must explain a failing email test while large logs are present in the repository.
+
+Expected signals:
+
+- `services/notifications/src/email.ts`
+- `services/notifications/tests/email.spec.ts`
+- relevant terms such as `formatEmailSubject`, `subjectPrefix` and `Welcome`
+
+Use this task when you want to test whether your package discourages broad log dumps and keeps debugging on the relevant source and test files.
+
+## `docs_update_scope`
+
+Purpose: documentation-scope behaviour.
+
+Codex must plan the scope for documenting an export format option by finding both documentation and implementation references.
+
+Expected signals:
+
+- `docs/API-EXPORT.md`
+- `packages/export-cli/src/commands/export.ts`
+- relevant terms such as `exportFormat`, `fixture-export` and `--format`
+
+Use this task when you want to test whether your package finds the right documentation and code context before proposing docs work.
+
+## `large_repo_noise`
+
+Purpose: noisy-repository behaviour.
+
+Codex must find the Search UI integration files while avoiding large, generated or irrelevant files.
+
+Expected signals:
+
+- `services/search/src/index.ts`
+- `apps/web/src/search/SearchBox.tsx`
+- relevant terms such as `SearchService`, `SearchBox` and `queryIndex`
+
+Use this task when you want to stress-test whether your package remains focused in a repository with deliberate noise.
+
 ## Choosing a task
 
 Start with the task closest to the behaviour you care about:
@@ -69,5 +125,9 @@ Start with the task closest to the behaviour you care about:
 - finding code locations: `export_cli_location`
 - planning changes: `feature_x_plan`
 - auditing release scope: `release_scope_audit`
+- minimal code fixes: `small_edit_fix`
+- test failures with noisy logs: `test_failure_with_logs`
+- documentation scope: `docs_update_scope`
+- noisy repository navigation: `large_repo_noise`
 
-If the smoke result is clean, run the same task with `--repeats 3`. Only consider broader claims after three or more decision-grade tasks.
+If the smoke result is clean, run the same task with `--repeats 3`. Only consider broader claims after all eight built-in tasks have decision-grade reports and at least five are effective.

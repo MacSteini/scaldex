@@ -152,7 +152,7 @@ The command prints a decision view in the terminal and writes:
 - `scaldex-summary/SCALDEX_SUMMARY.md`
 - `scaldex-summary/scaldex-summary.json`
 
-scaldex allows a global efficiency claim only when enough decision-grade task reports support it. A single task, a smoke run, or a blocked quality gate is not enough.
+scaldex allows a global efficiency claim only when all eight built-in tasks have decision-grade reports and at least five of those tasks are effective. Unknown task IDs cannot replace missing built-in tasks. A single task, a smoke run, or a blocked quality gate is not enough.
 
 ## Built-in tasks
 
@@ -162,6 +162,10 @@ Use `--task-id` to choose one or more built-in benchmark tasks:
 - `export_cli_location`: location task; checks whether Codex can identify an entry point and implementation files quickly.
 - `feature_x_plan`: planning task; checks whether Codex finds the relevant service and UI files before proposing a change.
 - `release_scope_audit`: audit task; checks whether Codex identifies release-scope files, manifests and risks.
+- `small_edit_fix`: minimal-fix task; checks whether Codex identifies the smallest useful code change without broad refactoring.
+- `test_failure_with_logs`: log-discipline task; checks whether Codex explains a failing test without dumping large logs.
+- `docs_update_scope`: documentation-scope task; checks whether Codex finds the right docs and source references for a documentation change.
+- `large_repo_noise`: noisy-repo task; checks whether Codex finds relevant files while avoiding generated or irrelevant noise.
 
 Read [docs/BUILT-IN-TASKS.md](docs/BUILT-IN-TASKS.md) before running the full task set.
 
@@ -179,7 +183,8 @@ Examples:
 
 - one task, `--repeats 1`: 2 paid Codex runs
 - one task, `--repeats 3`: 6 paid Codex runs
-- four tasks, `--repeats 3`: 24 paid Codex runs
+- eight tasks, `--repeats 1`: 16 paid Codex runs
+- eight tasks, `--repeats 3`: 48 paid Codex runs
 
 Start with smoke. Continue only when the terminal output or `CODEX_HANDOFF.md` tells you to run the next paid benchmark.
 
