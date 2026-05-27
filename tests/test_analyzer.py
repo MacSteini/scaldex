@@ -120,7 +120,11 @@ class AnalyzerTests(unittest.TestCase):
                     "verdict": "effective",
                     "primary_delta": {"agents_minus_control": -10, "percent": -10.0},
                     "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
-                    "final_relevant_files": {"repo_relative_only": True, "normalized_repo_relative_only": True},
+                    "final_relevant_files": {
+                        "repo_relative_only": False,
+                        "normalized_repo_relative_only": True,
+                        "raw_non_repo_relative_paths": ["/private/tmp/workspace/repo/services/auth/src/login.ts"],
+                    },
                     "decision": {
                         "decision": "fixture",
                         "next_action": next_action,
@@ -148,6 +152,8 @@ class AnalyzerTests(unittest.TestCase):
                 self.assertIn("paired_median_non_cached_input_delta", text)
                 self.assertIn("variant medians are secondary context only", text)
                 self.assertIn("## Quality Gates", text)
+                self.assertIn("Raw non-repo-relative paths before normalisation: `1 path(s); omitted from this handoff to avoid leaking local workspace paths`", text)
+                self.assertNotIn("/private/tmp/workspace", text)
                 self.assertIn("## Allowed Actions", text)
                 self.assertIn("## Forbidden Actions", text)
                 self.assertIn(forbidden, text)

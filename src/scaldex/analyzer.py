@@ -1149,7 +1149,7 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         "",
         f"- Repo-relative relevant_files only: `{final_relevant.get('repo_relative_only', False) if isinstance(final_relevant, dict) else False}`",
         f"- Normalized repo-relative relevant_files only: `{final_relevant.get('normalized_repo_relative_only', False) if isinstance(final_relevant, dict) else False}`",
-        f"- Raw non-repo-relative paths: `{format_warning_list(raw_paths)}`",
+        f"- Raw non-repo-relative paths before normalisation: `{len(raw_paths)} path(s); omitted from this handoff to avoid leaking local workspace paths`",
         f"- Non-repo-relative paths after normalisation: `{format_warning_list(non_relative_paths)}`",
         f"- Missing expected relevant files: `{format_warning_list(missing_paths)}`",
         "",

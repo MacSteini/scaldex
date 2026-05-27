@@ -155,16 +155,18 @@ def build_multi_summary(paths: list[Path]) -> dict[str, Any]:
     task_grades: dict[str, set[bool]] = {}
     for row in rows:
         task_grades.setdefault(str(row["task_id"]), set()).add(bool(row["decision_grade"]))
+    decision_grade_rows = [row for row in rows if row["decision_grade"]]
+    claim_rows = decision_grade_rows or rows
     warnings: list[str] = []
-    subject_fingerprints = sorted({str(row.get("subject_fingerprint", "")) for row in rows if row.get("subject_fingerprint")})
+    notes: list[str] = []
+    subject_fingerprints = sorted({str(row.get("subject_fingerprint", "")) for row in claim_rows if row.get("subject_fingerprint")})
     if len(subject_fingerprints) != 1:
         warnings.append("mixed_or_missing_subject_fingerprints")
-    if any(row.get("synthetic") for row in rows):
+    if any(row.get("synthetic") for row in claim_rows):
         warnings.append("synthetic_results_only")
     mixed_grade_tasks = sorted(task for task, grades in task_grades.items() if len(grades) > 1)
     if mixed_grade_tasks:
-        warnings.append("mixed_smoke_and_decision_grade_results")
-    decision_grade_rows = [row for row in rows if row["decision_grade"]]
+        notes.append("smoke_results_superseded_by_decision_grade_results")
     effective_tasks = {
         str(row["task_id"])
         for row in decision_grade_rows
@@ -196,6 +198,7 @@ def build_multi_summary(paths: list[Path]) -> dict[str, Any]:
         "expected_task_count": expected_task_count,
         "subject_fingerprints": subject_fingerprints,
         "warnings": warnings,
+        "notes": notes,
         "mixed_grade_tasks": mixed_grade_tasks,
         "tasks": rows,
     }
@@ -269,6 +272,9 @@ def format_multi_summary_console(summary: dict[str, Any], paths: dict[str, Path]
     ]
     warnings = summary.get("warnings", [])
     lines.append(f"- Warnings: {', '.join(str(warning) for warning in warnings) if warnings else 'none'}")
+    notes = summary.get("notes", [])
+    if notes:
+        lines.append(f"- Notes: {', '.join(str(note) for note in notes)}")
     if paths:
         lines.extend(
             [
@@ -330,6 +336,18 @@ def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
     warnings = summary.get("warnings", [])
     if warnings:
         lines.extend(f"- `{warning}`" for warning in warnings)
+    else:
+        lines.append("- None")
+    notes = summary.get("notes", [])
+    lines.extend(
+        [
+            "",
+            "## Notes",
+            "",
+        ]
+    )
+    if notes:
+        lines.extend(f"- `{note}`" for note in notes)
     else:
         lines.append("- None")
     blockers = summary.get("global_blockers", [])

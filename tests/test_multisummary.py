@@ -124,21 +124,33 @@ class MultiSummaryTests(unittest.TestCase):
             self.assertEqual(summary["effective_decision_grade_task_count"], 3)
             self.assertEqual(summary["decision_grade_task_count"], 4)
 
-    def test_build_multi_summary_blocks_mixed_fingerprints_and_mixed_grades(self) -> None:
+    def test_build_multi_summary_lets_decision_report_supersede_matching_smoke_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             smoke = base / "smoke" / "result.json"
             decision = base / "decision" / "result.json"
             write_result(smoke, "login_test_failure", paired_runs=1, subject_fingerprint="subject-a")
-            write_result(decision, "login_test_failure", paired_runs=3, subject_fingerprint="subject-b")
+            write_result(decision, "login_test_failure", paired_runs=3, subject_fingerprint="subject-a")
             summary = build_multi_summary([smoke, decision])
             self.assertFalse(summary["global_token_efficiency_claim_allowed"])
+            self.assertNotIn("mixed_smoke_and_decision_grade_results", summary["warnings"])
+            self.assertNotIn("mixed_or_missing_subject_fingerprints", summary["warnings"])
+            self.assertIn("smoke_results_superseded_by_decision_grade_results", summary["notes"])
+            self.assertEqual(summary["mixed_grade_tasks"], ["login_test_failure"])
+
+    def test_build_multi_summary_blocks_mixed_decision_fingerprints(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            first = base / "first" / "result.json"
+            second = base / "second" / "result.json"
+            write_result(first, "login_test_failure", paired_runs=3, subject_fingerprint="subject-a")
+            write_result(second, "export_cli_location", paired_runs=3, subject_fingerprint="subject-b")
+            summary = build_multi_summary([first, second])
+            self.assertFalse(summary["global_token_efficiency_claim_allowed"])
             self.assertEqual(summary["global_decision"], "do_not_claim_global_efficiency")
-            self.assertIn("effective_decision_grade_tasks_below_threshold:1/3", summary["global_blockers"])
+            self.assertIn("effective_decision_grade_tasks_below_threshold:2/3", summary["global_blockers"])
             self.assertIn("mixed_or_missing_subject_fingerprints", summary["global_blockers"])
             self.assertIn("mixed_or_missing_subject_fingerprints", summary["warnings"])
-            self.assertIn("mixed_smoke_and_decision_grade_results", summary["warnings"])
-            self.assertEqual(summary["mixed_grade_tasks"], ["login_test_failure"])
 
     def test_multi_task_result_is_split_by_task_and_paired_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -171,6 +183,7 @@ class MultiSummaryTests(unittest.TestCase):
             self.assertIn("What to do now:", report)
             self.assertIn("## Global Blockers", report)
             self.assertIn("decision_grade_tasks_incomplete:1/4", report)
+            self.assertIn("## Notes", report)
             self.assertIn("login_test_failure", report)
 
     def test_format_multi_summary_console_explains_synthetic_demo_data(self) -> None:

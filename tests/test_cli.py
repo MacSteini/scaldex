@@ -35,7 +35,7 @@ class CliTests(unittest.TestCase):
             "supports_ignore_rules": True,
         }
         with patch("scaldex.cli.doctor", return_value=checks):
-            code, payload = self.run_cli(["bench", "doctor"])
+            code, payload = self.run_cli(["bench", "doctor", "--json"])
         self.assertEqual(code, 0)
         self.assertFalse(payload["codex_api_key_present"])
 
@@ -50,7 +50,7 @@ class CliTests(unittest.TestCase):
             "supports_ignore_rules": True,
         }
         with patch("scaldex.cli.doctor", return_value=checks):
-            code, _payload = self.run_cli(["bench", "doctor", "--require-api-key"])
+            code, _payload = self.run_cli(["bench", "doctor", "--require-api-key", "--json"])
         self.assertEqual(code, 1)
 
     def test_doctor_require_api_key_passes_when_present(self) -> None:
@@ -64,9 +64,29 @@ class CliTests(unittest.TestCase):
             "supports_ignore_rules": True,
         }
         with patch("scaldex.cli.doctor", return_value=checks):
-            code, payload = self.run_cli(["bench", "doctor", "--require-api-key"])
+            code, payload = self.run_cli(["bench", "doctor", "--require-api-key", "--json"])
         self.assertEqual(code, 0)
         self.assertTrue(payload["codex_api_key_present"])
+
+    def test_doctor_prints_human_summary_by_default(self) -> None:
+        checks = {
+            "python": "3.14.5",
+            "git": True,
+            "codex": True,
+            "codex_version": "codex-cli test",
+            "codex_api_key_present": False,
+            "supports_json": True,
+            "supports_output_schema": True,
+            "supports_ignore_user_config": True,
+            "supports_ignore_rules": True,
+        }
+        with patch("scaldex.cli.doctor", return_value=checks):
+            code, text = self.run_cli_text(["bench", "doctor"])
+        self.assertEqual(code, 0)
+        self.assertIn("=== scaldex doctor ===", text)
+        self.assertIn("Ready for paid benchmark runs: yes", text)
+        self.assertIn("Codex API key: not set; scaldex will ask at the hidden prompt", text)
+        self.assertIn("What to do now:", text)
 
     def test_top_level_args_delegate_to_high_level_runner(self) -> None:
         with patch("scaldex.cli.app_main", return_value=0) as app_main:
@@ -107,6 +127,15 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("analyze", help_text)
         self.assertNotIn("synthesize", help_text)
         self.assertNotIn("synthetic", help_text.lower())
+
+        output = io.StringIO()
+        error = io.StringIO()
+        with self.assertRaises(SystemExit) as ctx, redirect_stdout(output), redirect_stderr(error):
+            main(["result", "--help"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertIn("Replay existing result reports without running Codex.", output.getvalue())
+        self.assertIn("show", output.getvalue())
+        self.assertIn("Show an existing result.json as the standard scaldex result", output.getvalue())
 
     def test_bench_summarize_writes_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
