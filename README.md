@@ -101,6 +101,8 @@ The run folder contains:
 
 For a deeper explanation of the scoring model, read [docs/MEASUREMENT-MODEL.md](docs/MEASUREMENT-MODEL.md).
 
+scaldex results are workflow-specific. A task that is `not_effective` does not prove that your instruction package is bad; it proves that the package did not help enough for that measured workflow under the benchmark rules.
+
 ## Use Codex-assisted follow-up
 
 If you want Codex to act on a result, give it:
@@ -169,6 +171,8 @@ Use `--task-id` to choose one or more built-in benchmark tasks:
 
 Read [docs/BUILT-IN-TASKS.md](docs/BUILT-IN-TASKS.md) before running the full task set.
 
+The tasks are realistic proxy scenarios, not a copy of your own project. They show where your package helps Codex, where the package stays neutral or harmful, and where more task-specific optimisation needs evidence.
+
 Use `--all-tasks` only when you intentionally want the full task set. It increases paid Codex runs.
 
 ## Cost model
@@ -195,6 +199,7 @@ Start with smoke. Continue only when the terminal output or `CODEX_HANDOFF.md` t
 - scaldex keeps subject warnings separate from benchmark warnings.
 - scaldex treats benchmark warnings as blockers for efficiency claims.
 - scaldex does not store your Codex API key in generated reports.
+- scaldex rejects symlinks inside the measured subject package.
 - scaldex refuses output layouts that would place generated reports inside the measured subject package.
 
 ## Licence

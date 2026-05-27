@@ -4,6 +4,30 @@ scaldex tasks are small benchmark scenarios, not your project. They use controll
 
 Run one task first. Use `--all-tasks` only when you intentionally want the full paid task set.
 
+## How to read task outcomes
+
+Each task is a narrow proxy for a real Codex workflow. scaldex needs repeatable evidence, so each prompt has expected files, expected terms and a quality gate.
+
+A task can fail for these legitimate reasons:
+
+- the instruction package adds too much reading or tool use
+- the package points Codex at the wrong files
+- Codex misses expected files or terms
+- structured output, usage data or path integrity is not clean
+- the measured instructions do not cover the workflow
+
+That last case is important. If you wrote your package mainly for debugging, it may perform well on `login_test_failure` and poorly on `docs_update_scope`. That does not make the package useless. It shows that the package is workflow-specific.
+
+For v1.0, scaldex treats the eight tasks as the core representative set:
+
+- lookup and location finding
+- debugging and test-failure analysis
+- planning and small code-fix scope
+- documentation and release scope
+- noisy-repository navigation
+
+These scenarios stay close to common Codex work, but they are not exhaustive. Use them to decide where an instruction package helps, where the package stays neutral or harmful, and where further optimisation needs task-specific evidence.
+
 ## `login_test_failure`
 
 Purpose: debugging behaviour.
