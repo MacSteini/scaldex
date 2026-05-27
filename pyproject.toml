@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "scaldex"
 version = "1.0.0"
-description = "Codex-first measurement harness for AGENTS.md and .codex instruction packages"
+description = "Measurement harness for Codex instruction packages"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []

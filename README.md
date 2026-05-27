@@ -1,33 +1,29 @@
 # scaldex
 
-scaldex measures whether a Codex instruction package helps or hurts Codex token usage.
+scaldex measures whether a Codex instruction package helps or hurts Codex token use.
 
-It compares the same benchmark task in two isolated variants:
+It runs the same benchmark task twice in isolated conditions:
 
-- `agents`: Codex runs with your measured `AGENTS.md` and optional `.codex/` package.
+- `agents`: Codex runs with the instruction package you are measuring.
 - `control`: Codex runs without that package and without your global `~/.codex` config.
 
-The primary decision metric is the paired median non-cached input token delta. Quality gates come first: failed runs, missing expected files, invalid structured output, missing usage data, or path-integrity warnings block efficiency claims even when tokens look lower.
+scaldex writes terminal output for humans. Each run also writes `CODEX_HANDOFF.md` for Codex-assisted follow-up. You can inspect the reports yourself, or give the handoff to Codex when you want help interpreting the result or improving the measured package.
 
-scaldex is Codex-first. The terminal explains the result to a human, and every run writes `CODEX_HANDOFF.md` so you can give the measurement to Codex for the next action.
+## What scaldex answers
 
-## What scaldex is for
+- Does this instruction package reduce non-cached input tokens for Codex?
+- Did it preserve task quality against the isolated control run?
+- Is the result only a smoke check, or strong enough for a decision?
+- Should you run another paid benchmark, fix blockers, or avoid an efficiency claim?
 
-Use scaldex when you want to answer:
-
-- Does this `AGENTS.md` or `.codex/` package reduce token usage for Codex?
-- Did the instruction package keep quality at 1.0 against control?
-- Should I run a decision-grade repeat, stop and fix blockers, or avoid an efficiency claim?
-- What exactly should I give Codex so it can interpret the measurement safely?
-
-scaldex does not optimize your instructions automatically. It measures, reports, and produces a Codex handoff.
+scaldex does not change your instructions. It measures, reports, and writes evidence.
 
 ## Requirements
 
-- Python 3.11 or newer
-- Git
-- Codex CLI available on `PATH`
-- A Codex API key for paid benchmark runs
+- Python 3.11 or newer.
+- Git on `PATH`. scaldex uses Git internally for temporary benchmark snapshots; your measured package does not need to be a Git repository.
+- Codex CLI on `PATH` with `codex exec` support.
+- A Codex API key for paid benchmark runs.
 
 Check local prerequisites without spending API money:
 
@@ -49,7 +45,7 @@ From the repository root:
 python3 -m pip install -e .
 ```
 
-This installs the `scaldex` command. If you do not install the package, use the source-checkout wrapper instead:
+This installs the `scaldex` command. Without installation, use the source-checkout wrapper:
 
 ```sh
 python3 run_scaldex.py --help
@@ -57,17 +53,17 @@ python3 run_scaldex.py --help
 
 ## Prepare a subject package
 
-Create a folder containing the instruction package you want to measure:
+Create a folder for the instruction package you want to measure:
 
 ```sh
 mkdir -p subject
 ```
 
-Put `AGENTS.md` in `subject/`. If the package depends on `.codex/` or other support files, put those files in `subject/` too.
+Put `AGENTS.md` in `subject/`. Codex requires this file as the instruction entry point. Add any support files or folders your setup relies on, including `.codex/` or custom-named files.
 
-The default mode measures the whole `subject/` package. Use `--subject-mode agents-md` only for a diagnostic AGENTS-only run.
+By default, scaldex measures the whole `subject/` package. Use `--subject-mode agents-md` only for a diagnostic run that measures `AGENTS.md` alone.
 
-Keep `scaldex-run/`, `scaldex-history/`, and other generated report folders outside `subject/`. scaldex refuses nested subject/output layouts because generated reports would pollute future measurements.
+Keep generated report folders outside `subject/`. scaldex refuses layouts where `scaldex-run/`, `scaldex-history/`, or other output folders would pollute future measurements.
 
 ## Run a smoke benchmark
 
@@ -83,40 +79,39 @@ If `CODEX_API_KEY` is not set, scaldex asks:
 Enter Codex API Key:
 ```
 
-scaldex uses the key for that process. scaldex does not write it into reports, history, or config files. That is why you may need to enter it again in a new terminal run unless you set `CODEX_API_KEY` yourself.
+scaldex uses the key only for that process. It does not write the key into reports, history, or config files. If you do not set `CODEX_API_KEY` yourself, scaldex asks again for each paid command.
 
 ## Read the result
 
-The terminal output is the human control layer:
+The terminal output is the quick decision layer:
 
 - `What this means` explains the verdict.
-- `What to do now` tells you whether to stop, hand the report to Codex, run `--repeats 3`, or avoid an efficiency claim.
-- `Codex handoff` tells you which file to give Codex and what Codex must not infer.
-- `Evidence` explains the primary token metric, quality gate, and reliability.
-- `Audit checks` explains isolation, path integrity, report sanity, and warnings.
+- `What to do now` tells you whether to stop, use the Codex handoff, run `--repeats 3`, or avoid an efficiency claim.
+- `Codex handoff` points to the file Codex can use for follow-up.
+- `Evidence` explains token delta, quality and reliability.
+- `Audit checks` explains isolation, path integrity and warnings.
+
+scaldex shows quality as a success rate. `1.0` means 100% of that side's required task checks passed. `0.0` means 0% passed.
 
 The run folder contains:
 
-- `scaldex-run/RESULT.md`: human-readable report
-- `scaldex-run/CODEX_HANDOFF.md`: Codex instruction for the next action
-- `scaldex-run/result.json`: machine-readable report
+- `scaldex-run/RESULT.md`: human-readable report.
+- `scaldex-run/CODEX_HANDOFF.md`: Codex-facing follow-up brief.
+- `scaldex-run/result.json`: machine-readable report.
 
-## Give the result to Codex
+For a deeper explanation of the scoring model, read [docs/measurement-model.md](docs/measurement-model.md).
 
-For follow-up work, give Codex this file:
+## Use Codex-assisted follow-up
+
+If you want Codex to act on a result, give it:
 
 ```text
 scaldex-run/CODEX_HANDOFF.md
 ```
 
-Codex should follow the requested action in that file. Typical actions are:
+The handoff tells Codex what evidence exists, which blockers apply, what it may do, and what it must not claim. You can also read `RESULT.md` yourself; scaldex does not require you to use Codex for interpretation.
 
-- run a decision-grade repeat command
-- stop and fix quality or output blockers
-- record a decision-grade win
-- avoid an efficiency claim and inspect task behaviour
-
-Do not ask Codex to optimize `AGENTS.md` or `.codex/` from a smoke win alone. Smoke evidence only tells you whether a decision-grade run is worth the cost.
+Do not improve the measured package from a smoke win alone. Smoke evidence only tells you whether a decision-grade run is worth the cost.
 
 ## Run decision-grade evidence only when invited
 
@@ -146,13 +141,13 @@ scaldex result show scaldex-run/result.json
 
 When a new default run replaces `scaldex-run/`, scaldex archives the previous compact report in `scaldex-history/`.
 
-After you have history, summarize current and older reports without spending money:
+After you have history, summarise current and older reports without spending money:
 
 ```sh
 scaldex bench summarize scaldex-history scaldex-run --out scaldex-summary
 ```
 
-The summary prints a decision view in the terminal and writes:
+The command prints a decision view in the terminal and writes:
 
 - `scaldex-summary/SCALDEX_SUMMARY.md`
 - `scaldex-summary/scaldex-summary.json`
@@ -163,10 +158,12 @@ scaldex allows a global efficiency claim only when enough decision-grade task re
 
 Use `--task-id` to choose one or more built-in benchmark tasks:
 
-- `login_test_failure`
-- `export_cli_location`
-- `feature_x_plan`
-- `release_scope_audit`
+- `login_test_failure`: debugging task; checks whether the package helps Codex find a failing test and production cause without broad log reading.
+- `export_cli_location`: location task; checks whether Codex can identify an entry point and implementation files quickly.
+- `feature_x_plan`: planning task; checks whether Codex finds the relevant service and UI files before proposing a change.
+- `release_scope_audit`: audit task; checks whether Codex identifies release-scope files, manifests and risks.
+
+Read [docs/built-in-tasks.md](docs/built-in-tasks.md) before running the full task set.
 
 Use `--all-tasks` only when you intentionally want the full task set. It increases paid Codex runs.
 

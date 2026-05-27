@@ -24,17 +24,17 @@ class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescript
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scaldex",
-        description="Measure whether an AGENTS.md/Codex instruction package helps or hurts token usage.",
+        description="Measure whether a Codex instruction package helps or hurts token usage.",
         epilog=(
             "Typical flow:\n"
-            "  1. Put AGENTS.md and optional support files in subject/.\n"
+            "  1. Put AGENTS.md and any support files in subject/.\n"
             "  2. Run a low-cost smoke test: scaldex --model gpt-5.4\n"
-            "  3. Give scaldex-run/CODEX_HANDOFF.md to Codex for the next action.\n"
-            "  4. Read 'What this means' and 'What to do now' as the human control layer.\n"
+            "  3. Read 'What this means' and 'What to do now' as the human control layer.\n"
+            "  4. For Codex-assisted follow-up, use scaldex-run/CODEX_HANDOFF.md.\n"
             "  5. Run --repeats 3 only when the handoff or terminal output tells you to.\n"
             "  6. Replay an existing report without spending money: scaldex --print-result scaldex-run/result.json\n\n"
             "scaldex never stores your Codex API key in generated reports. If CODEX_API_KEY is not already set,\n"
-            "the tool asks for it at a hidden prompt for that process only."
+            "the tool asks for it at a hidden prompt for each paid command."
         ),
         formatter_class=HelpFormatter,
     )

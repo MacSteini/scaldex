@@ -69,30 +69,30 @@ def artifact_path(result: dict[str, object], key: str, result_dir: Path | None =
 
 def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
     if synthetic:
-        return "Use this only for scaldex development or CI checks. It does not measure your AGENTS.md or .codex package."
+        return "Use this only for scaldex development or CI checks. It does not measure your real instruction package."
     next_action = decision.get("next_action")
     scope = decision.get("scope", "task")
     if next_action == "eligible_for_decision_run":
         if scope == "result_set":
-            return "Give the Codex handoff to Codex, or run the same task set with --repeats 3 before trusting the result."
-        return "Give the Codex handoff to Codex, or run this same task with --repeats 3 before trusting the result."
+            return "Run the same task set with --repeats 3 before trusting the result; for Codex-assisted follow-up, use the handoff file."
+        return "Run this same task with --repeats 3 before trusting the result; for Codex-assisted follow-up, use the handoff file."
     if next_action == "stop_fix_quality_or_task_behavior":
-        return "Give the Codex handoff to Codex; it lists the exact quality or integrity blockers to fix before spending more money."
+        return "Stop before spending more money. Inspect the listed blockers yourself, or use the handoff for Codex-assisted follow-up."
     if next_action == "record_decision_grade_win":
         if scope == "result_set":
-            return "Give the Codex handoff to Codex to record this evidence and check global claim eligibility."
-        return "Give the Codex handoff to Codex to compare this win with other decision-grade task reports before making a global claim."
+            return "Keep this evidence and check global claim eligibility; the handoff can help Codex compare reports safely."
+        return "Keep this win and compare it with other decision-grade task reports before making a global claim."
     if next_action == "do_not_claim_efficiency":
         if scope == "result_set":
-            return "Give the Codex handoff to Codex to inspect task-level behaviour before changing the package or rerunning paid tests."
-        return "Give the Codex handoff to Codex to inspect task behaviour before changing the package or rerunning paid tests."
+            return "Do not claim efficiency. Inspect task-level behaviour before changing the package or rerunning paid tests."
+        return "Do not claim efficiency. Inspect task behaviour before changing the package or rerunning paid tests."
     return "Inspect the report before deciding whether another paid run is justified."
 
 
 def handoff_purpose(decision: dict[str, Any]) -> str:
     next_action = decision.get("next_action")
     if next_action == "eligible_for_decision_run":
-        return "Codex gets the exact decision-run request and should not optimize yet."
+        return "Codex gets the exact decision-run request and should not optimise yet."
     if next_action == "stop_fix_quality_or_task_behavior":
         return "Codex gets the exact quality or output blockers to fix before any more paid runs."
     if next_action == "record_decision_grade_win":
@@ -105,7 +105,7 @@ def handoff_purpose(decision: dict[str, Any]) -> str:
 def handoff_safety_boundary(decision: dict[str, Any]) -> str:
     next_action = decision.get("next_action")
     if next_action == "eligible_for_decision_run":
-        return "Smoke evidence only; no AGENTS.md/.codex changes and no efficiency claim."
+        return "Smoke evidence only; no instruction-package changes and no efficiency claim."
     if next_action == "stop_fix_quality_or_task_behavior":
         return "Quality or integrity blockers override token savings."
     if next_action == "record_decision_grade_win":
@@ -199,9 +199,9 @@ def path_integrity_sentence(final_relevant: dict[str, Any]) -> str:
     normalized = final_relevant.get("normalized_repo_relative_only", False)
     raw = final_relevant.get("repo_relative_only", False)
     if normalized:
-        return "Path integrity: final relevant files normalize to repo-relative paths, so Codex can compare reports safely."
+        return "Path integrity: final relevant files normalise to repo-relative paths, so Codex can compare reports safely."
     if raw:
-        return "Path integrity: raw relevant files are repo-relative, but normalized path status is not confirmed."
+        return "Path integrity: raw relevant files are repo-relative, but normalised path status is not confirmed."
     return "Path integrity needs attention: relevant_files may include absolute or non-repo-relative paths."
 
 
@@ -252,14 +252,14 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     codex_handoff = artifact_path(result, "codex_handoff_md", result_dir)
     print("Codex handoff")
     if codex_handoff:
-        print(f"- File to send: {codex_handoff}")
+        print(f"- For Codex-assisted follow-up, use: {codex_handoff}")
     else:
-        print("- File to send: CODEX_HANDOFF.md was not found beside this result.")
+        print("- Codex-assisted follow-up file was not found beside this result.")
     print(f"- Purpose: {handoff_purpose(decision)}")
     print(f"- Boundary: {handoff_safety_boundary(decision)}")
     print()
     print("What was compared")
-    print("agents means the run with your measured AGENTS.md/.codex package installed.")
+    print("agents means the run with your measured instruction package installed.")
     print("control means the same task run without that package and without your global ~/.codex config.")
     isolation = result.get("isolation", {})
     if isinstance(subject, dict):

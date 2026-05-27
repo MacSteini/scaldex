@@ -200,7 +200,7 @@ class CliTests(unittest.TestCase):
             base = Path(tmp)
             with self.assertRaises(SystemExit) as ctx:
                 main(["bench", "summarize", str(base / "missing-history"), "--out", str(base / "out")])
-            self.assertIn("Cannot summarize results: Result input not found", str(ctx.exception))
+            self.assertIn("Cannot summarise results: Result input not found", str(ctx.exception))
 
     def test_result_show_prints_existing_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -231,18 +231,18 @@ class CliTests(unittest.TestCase):
             self.assertIn("What this means:", text)
             self.assertIn("What to do now:", text)
             self.assertIn("Codex handoff:", text)
-            self.assertIn("- File to send:", text)
+            self.assertIn("- For Codex-assisted follow-up, use:", text)
             self.assertIn("- Purpose:", text)
             self.assertIn("- Boundary:", text)
             self.assertIn("What was compared", text)
-            self.assertIn("agents means the run with your measured AGENTS.md/.codex package installed.", text)
+            self.assertIn("agents means the run with your measured instruction package installed.", text)
             self.assertIn("control means the same task run without that package and without your global ~/.codex config.", text)
             self.assertIn("Primary metric: agents used 10 fewer non-cached input tokens than control (-10.0%).", text)
             self.assertIn("Secondary context only: agents median 90, control median 100; this is not the decision metric.", text)
             self.assertIn("Both sides completed all required runs successfully: agents success rate 100% (1.0), control success rate 100% (1.0).", text)
             self.assertIn("This run excluded your global ~/.codex config, so the subject package was measured in isolation.", text)
             self.assertIn("Report identity: batch batch-test; subject fingerprint subject-test; run config fingerprint config-test.", text)
-            self.assertIn("Path integrity: final relevant files normalize to repo-relative paths, so Codex can compare reports safely.", text)
+            self.assertIn("Path integrity: final relevant files normalise to repo-relative paths, so Codex can compare reports safely.", text)
 
     def test_result_show_prints_quality_blocker_details(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -279,10 +279,10 @@ class CliTests(unittest.TestCase):
 
     def test_result_show_prints_human_next_steps_for_all_actions(self) -> None:
         cases = [
-            ("eligible_for_decision_run", "Give the Codex handoff to Codex, or run this same task with --repeats 3"),
-            ("stop_fix_quality_or_task_behavior", "Give the Codex handoff to Codex; it lists the exact quality or integrity blockers"),
-            ("record_decision_grade_win", "Give the Codex handoff to Codex to compare this win"),
-            ("do_not_claim_efficiency", "Give the Codex handoff to Codex to inspect task behaviour"),
+            ("eligible_for_decision_run", "Run this same task with --repeats 3 before trusting the result"),
+            ("stop_fix_quality_or_task_behavior", "Stop before spending more money"),
+            ("record_decision_grade_win", "Keep this win and compare it with other decision-grade task reports"),
+            ("do_not_claim_efficiency", "Do not claim efficiency. Inspect task behaviour"),
         ]
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -338,7 +338,7 @@ class CliTests(unittest.TestCase):
             )
             code, text = self.run_cli_text(["result", "show", str(result)])
             self.assertEqual(code, 0)
-            self.assertIn(f"- File to send: {local_handoff.resolve()}", text)
+            self.assertIn(f"- For Codex-assisted follow-up, use: {local_handoff.resolve()}", text)
             self.assertIn(f"- Human report: {local_report.resolve()}", text)
             self.assertNotIn(str(stale_handoff), text)
 

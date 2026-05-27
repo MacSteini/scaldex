@@ -903,11 +903,11 @@ def codex_requested_action(result: dict[str, Any]) -> str:
     if next_action == "eligible_for_decision_run":
         return f"Tell the user to run this decision-grade command exactly before making optimisation claims: {decision_run_command(result)}"
     if next_action == "stop_fix_quality_or_task_behavior":
-        return "Analyze the listed quality or integrity blockers first; propose minimal fixes before any more paid benchmarking."
+        return "Analyse the listed quality or integrity blockers first; propose minimal fixes before any more paid benchmarking."
     if next_action == "record_decision_grade_win":
         return "Record this report as decision-grade evidence and check whether enough matching decision-grade reports exist before allowing any global efficiency claim."
     if next_action == "do_not_claim_efficiency":
-        return "Analyze task-specific behaviour and propose minimal AGENTS.md/.codex changes, but do not claim efficiency from this result."
+        return "Analyse task-specific behaviour and propose minimal instruction-package changes, but do not claim efficiency from this result."
     return "Inspect the result and ask for missing context before recommending paid reruns or package changes."
 
 
@@ -915,7 +915,7 @@ def codex_forbidden_action(result: dict[str, Any]) -> str:
     decision = result.get("decision", {})
     next_action = decision.get("next_action") if isinstance(decision, dict) else ""
     if next_action == "eligible_for_decision_run":
-        return "Do not optimize AGENTS.md/.codex yet and do not claim efficiency; this is smoke evidence only."
+        return "Do not optimise the instruction package yet and do not claim efficiency; this is smoke evidence only."
     if next_action == "stop_fix_quality_or_task_behavior":
         return "Do not treat token reductions as wins while quality, path, output, usage, or warning blockers exist."
     if next_action == "record_decision_grade_win":
@@ -944,7 +944,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         "",
         f"Verdict: **{result['verdict']}**",
         "",
-        f"For Codex action, use `{artifacts.get('codex_handoff_md', 'CODEX_HANDOFF.md') if isinstance(artifacts, dict) else 'CODEX_HANDOFF.md'}`.",
+        f"For Codex-assisted follow-up, use `{artifacts.get('codex_handoff_md', 'CODEX_HANDOFF.md') if isinstance(artifacts, dict) else 'CODEX_HANDOFF.md'}`.",
         "",
         "## Decision Summary",
         "",
@@ -961,11 +961,11 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         "",
         "## Glossary",
         "",
-        "- `agents`: the run with the measured `AGENTS.md`/`.codex` package installed.",
+        "- `agents`: the run with the measured instruction package installed.",
         "- `control`: the same task run without that measured instruction package.",
         "- `paired delta`: the agents result minus the matching control result for the same task and repeat.",
         "- `fingerprint`: an ID for the measured subject or run settings; use it only when comparing or auditing reports.",
-        "- `normalized repo-relative relevant_files`: final file paths were normalized to repository-relative paths so Codex can compare reports safely.",
+        "- `normalized repo-relative relevant_files`: final file paths were normalised to repository-relative paths so Codex can compare reports safely.",
         "",
         "Variant medians are secondary context; the decision uses paired median non-cached input delta plus quality gates.",
         "",
@@ -1113,7 +1113,7 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         "",
         "Role: You are Codex analyzing a scaldex benchmark result.",
         "",
-        "User goal: optimize the measured AGENTS.md/.codex package only when evidence supports it.",
+        "User goal: improve the measured instruction package only when evidence supports it.",
         "",
         "Your job: follow the requested action below without making unsupported efficiency claims.",
         "",
@@ -1164,8 +1164,8 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         "## Allowed Actions",
         "",
         "- Explain this measurement using the primary metric and quality gates above.",
-        "- Ask the user for the measured AGENTS.md/.codex package if you need to inspect or modify it.",
-        "- Propose minimal AGENTS.md/.codex changes only when the requested action permits optimisation work.",
+        "- Ask the user for the measured instruction package if you need to inspect or modify it.",
+        "- Propose minimal instruction-package changes only when the requested action permits optimisation work.",
         "- Ask the user before running additional paid benchmarks.",
         "",
         "## Forbidden Actions",
@@ -1173,21 +1173,21 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         f"- {codex_forbidden_action(result)}",
         "- Do not use unpaired variant medians as the decision metric.",
         "- Do not ignore failed quality gates, missing expected files, invalid final JSON, missing usage data, or benchmark warnings.",
-        "- Do not edit benchmark fixture files as if they were the user's AGENTS.md/.codex package.",
+        "- Do not edit benchmark fixture files as if they were the user's instruction package.",
         "",
         "## Files To Inspect Next",
         "",
         "- This handoff file.",
         "- `RESULT.md` for the human-readable report.",
         "- `result.json` for machine-readable evidence.",
-        "- The measured `AGENTS.md` and `.codex/` package supplied by the user.",
+        "- The measured instruction package supplied by the user.",
         "",
         "## Output Expected From Codex",
         "",
         "- State whether this is smoke or decision-grade evidence.",
         "- State the requested action you will follow.",
         "- State any blockers before recommending more paid runs.",
-        "- If optimisation is allowed, propose minimal evidence-linked changes to AGENTS.md/.codex.",
+        "- If optimisation is allowed, propose minimal evidence-linked changes to the instruction package.",
         "- If optimisation is not allowed, give the exact next measurement or blocker-fix step instead.",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

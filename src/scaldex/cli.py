@@ -21,7 +21,7 @@ def build_utility_parser() -> argparse.ArgumentParser:
     bench_parser = subparsers.add_parser("bench")
     bench_subparsers = bench_parser.add_subparsers(dest="bench_command", required=True, metavar="COMMAND")
 
-    summarize_parser = bench_subparsers.add_parser("summarize", help="Summarize existing result.json reports without running Codex.")
+    summarize_parser = bench_subparsers.add_parser("summarize", help="Summarise existing result.json reports without running Codex.")
     summarize_parser.add_argument("inputs", nargs="+", type=Path)
     summarize_parser.add_argument("--out", required=True, type=Path)
     summarize_parser.add_argument("--json", action="store_true", help="Print machine-readable output paths instead of the human summary.")
@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             paths = summarize_results(args.inputs, args.out)
         except (FileNotFoundError, ValueError) as exc:
-            raise SystemExit(f"Cannot summarize results: {exc}") from exc
+            raise SystemExit(f"Cannot summarise results: {exc}") from exc
         if args.json:
             print(json.dumps({key: str(value) for key, value in paths.items()}, indent=2))
         else:

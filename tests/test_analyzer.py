@@ -108,10 +108,10 @@ def write_run(
 class AnalyzerTests(unittest.TestCase):
     def test_codex_handoff_contract_covers_all_next_actions(self) -> None:
         cases = [
-            ("eligible_for_decision_run", "Tell the user to run this decision-grade command", "Do not optimize AGENTS.md/.codex yet"),
-            ("stop_fix_quality_or_task_behavior", "Analyze the listed quality or integrity blockers", "Do not treat token reductions as wins"),
+            ("eligible_for_decision_run", "Tell the user to run this decision-grade command", "Do not optimise the instruction package yet"),
+            ("stop_fix_quality_or_task_behavior", "Analyse the listed quality or integrity blockers", "Do not treat token reductions as wins"),
             ("record_decision_grade_win", "Record this report as decision-grade evidence", "Do not make a global efficiency claim"),
-            ("do_not_claim_efficiency", "Analyze task-specific behaviour", "Do not claim token efficiency"),
+            ("do_not_claim_efficiency", "Analyse task-specific behaviour", "Do not claim token efficiency"),
         ]
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -222,11 +222,11 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("| Quality gate | passed |", result_md)
             self.assertIn("| Global claim eligibility | single-task only / not enough evidence |", result_md)
             self.assertIn("## Glossary", result_md)
-            self.assertIn("`agents`: the run with the measured `AGENTS.md`/`.codex` package installed.", result_md)
+            self.assertIn("`agents`: the run with the measured instruction package installed.", result_md)
             self.assertIn("`control`: the same task run without that measured instruction package.", result_md)
             self.assertIn("`paired delta`: the agents result minus the matching control result", result_md)
             self.assertIn("`fingerprint`: an ID for the measured subject or run settings", result_md)
-            self.assertIn("`normalized repo-relative relevant_files`: final file paths were normalized", result_md)
+            self.assertIn("`normalized repo-relative relevant_files`: final file paths were normalised", result_md)
             self.assertIn("Variant medians are secondary context", result_md)
             self.assertIn("Paired median non-cached input delta", result_md)
             self.assertIn("Unpaired variant median delta", result_md)
@@ -249,7 +249,7 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("- Quality gate: `passed`", handoff_md)
             self.assertIn("## Allowed Actions", handoff_md)
             self.assertIn("## Forbidden Actions", handoff_md)
-            self.assertIn("Do not optimize AGENTS.md/.codex yet", handoff_md)
+            self.assertIn("Do not optimise the instruction package yet", handoff_md)
             self.assertIn("## Files To Inspect Next", handoff_md)
             self.assertIn("## Output Expected From Codex", handoff_md)
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
