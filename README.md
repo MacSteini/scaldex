@@ -25,30 +25,57 @@ scaldex does not change your instructions. It measures, reports, and writes evid
 - Codex CLI on `PATH` with `codex exec` support.
 - A Codex API key for paid benchmark runs.
 
-Check local prerequisites without spending API money:
+If you are not sure whether these tools are ready, run the doctor command after installation. It does not spend API money.
 
-```sh
-scaldex bench doctor
-```
+## Install from GitHub source
 
-For machine-readable prerequisite output:
+Download or clone the scaldex project from GitHub, then open a terminal in the downloaded `scaldex` folder. This is the folder that contains `README.md`, `pyproject.toml` and `run_scaldex.py`.
 
-```sh
-scaldex bench doctor --json
-```
-
-## Install from a source checkout
-
-From the repository root:
+Install the `scaldex` command:
 
 ```sh
 python3 -m pip install -e .
 ```
 
-This installs the `scaldex` command. Without installation, use the source-checkout wrapper:
+Then check your local setup without spending API money:
+
+```sh
+scaldex bench doctor
+```
+
+If you do not want to install the command yet, stay in the downloaded `scaldex` folder and use the wrapper instead:
 
 ```sh
 python3 run_scaldex.py --help
+```
+
+The examples below use the installed `scaldex` command. With the wrapper, replace `scaldex` with `python3 run_scaldex.py` for the main benchmark command.
+
+## First run checklist
+
+Use this checklist for your first measurement:
+
+1. Open a terminal in the downloaded `scaldex` folder.
+2. Install scaldex with `python3 -m pip install -e .`.
+3. Run `scaldex bench doctor`.
+4. Create `subject/`.
+5. Put the instruction package you want to measure into `subject/`.
+6. Run one smoke benchmark.
+7. Read only `What this means` and `What to do now` first.
+8. If you want Codex-assisted follow-up, give Codex `scaldex-run/CODEX_HANDOFF.md`.
+
+The smoke command is:
+
+```sh
+scaldex --model gpt-5.4 --subject-dir subject --task-id login_test_failure --repeats 1
+```
+
+This command starts two paid Codex runs: one `control` run and one `agents` run.
+
+For machine-readable prerequisite output:
+
+```sh
+scaldex bench doctor --json
 ```
 
 ## Prepare a subject package
@@ -67,11 +94,7 @@ Keep generated report folders outside `subject/`. scaldex refuses layouts where 
 
 ## Run a smoke benchmark
 
-A smoke run is the low-cost first check. It runs one paired task: one `control` run and one `agents` run.
-
-```sh
-scaldex --model gpt-5.4 --subject-dir subject --task-id login_test_failure --repeats 1
-```
+A smoke run is the low-cost first check. It runs one paired task: one `control` run and one `agents` run. Use the smoke command from the first run checklist above.
 
 If `CODEX_API_KEY` is not set, scaldex asks:
 
