@@ -59,9 +59,9 @@ Create a folder for the instruction package you want to measure:
 mkdir -p subject
 ```
 
-Put `AGENTS.md` in `subject/`. Codex requires this file as the instruction entry point. Add any support files or folders your setup relies on, including `.codex/` or custom-named files.
+Put `AGENTS.md` or `AGENTS.override.md` in `subject/`. Codex uses these files as instruction entry points. Add any support files or folders your setup relies on, including `.codex/` or custom-named files.
 
-By default, scaldex measures the whole `subject/` package. Use `--subject-mode agents-md` only for a diagnostic run that measures `AGENTS.md` alone.
+By default, scaldex measures the whole `subject/` package. Use `--subject-mode agents-md` only for a diagnostic run that measures the instruction entry file alone.
 
 Keep generated report folders outside `subject/`. scaldex refuses layouts where `scaldex-run/`, `scaldex-history/`, or other output folders would pollute future measurements.
 
@@ -99,7 +99,7 @@ The run folder contains:
 - `scaldex-run/CODEX_HANDOFF.md`: Codex-facing follow-up brief.
 - `scaldex-run/result.json`: machine-readable report.
 
-For a deeper explanation of the scoring model, read [docs/measurement-model.md](docs/measurement-model.md).
+For a deeper explanation of the scoring model, read [docs/MEASUREMENT-MODEL.md](docs/MEASUREMENT-MODEL.md).
 
 ## Use Codex-assisted follow-up
 
@@ -163,7 +163,7 @@ Use `--task-id` to choose one or more built-in benchmark tasks:
 - `feature_x_plan`: planning task; checks whether Codex finds the relevant service and UI files before proposing a change.
 - `release_scope_audit`: audit task; checks whether Codex identifies release-scope files, manifests and risks.
 
-Read [docs/built-in-tasks.md](docs/built-in-tasks.md) before running the full task set.
+Read [docs/BUILT-IN-TASKS.md](docs/BUILT-IN-TASKS.md) before running the full task set.
 
 Use `--all-tasks` only when you intentionally want the full task set. It increases paid Codex runs.
 

@@ -336,6 +336,24 @@ class RootRunnerTests(unittest.TestCase):
             with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch("scaldex.app.create_fixture"), patch("scaldex.app.run_benchmark", side_effect=fake_run_benchmark):
                 self.assertEqual(module.main(["--model", "model", "--subject-mode", "agents-md"]), 0)
 
+    def test_agents_md_subject_mode_accepts_agents_override_file(self) -> None:
+        module = load_root_runner()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subject = root / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.override.md").write_text("# Override\n", encoding="utf-8")
+
+            def fake_run_benchmark(*args: object, **kwargs: object) -> dict[str, Path]:
+                self.assertEqual(kwargs["subject_mode"], "agents-md")
+                self.assertEqual(args[1], (root / "subject" / "AGENTS.override.md").resolve())
+                self.assertIsNone(kwargs["agents_dir"])
+                return write_fake_outputs(root)
+
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True), patch("scaldex.app.create_fixture"), patch("scaldex.app.run_benchmark", side_effect=fake_run_benchmark):
+                self.assertEqual(module.main(["--model", "model", "--subject-mode", "agents-md"]), 0)
+
     def test_archives_previous_compact_report_before_replacing_run_dir(self) -> None:
         module = load_root_runner()
         with tempfile.TemporaryDirectory() as tmp:

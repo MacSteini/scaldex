@@ -28,6 +28,7 @@ RUN_ISOLATION = {
     "isolated_codex_home": True,
     "home_codex_excluded": True,
 }
+INSTRUCTION_ENTRY_FILES = ("AGENTS.md", "AGENTS.override.md")
 
 
 def command_output(args: list[str], cwd: Path | None = None) -> str:
@@ -86,8 +87,9 @@ def validate_benchmark_inputs(fixture: Path, agents_file: Path | None, repeats: 
     if agents_dir is not None:
         if not agents_dir.is_dir():
             raise FileNotFoundError(f"AGENTS directory does not exist: {agents_dir}")
-        if not (agents_dir / "AGENTS.md").is_file():
-            raise FileNotFoundError(f"AGENTS directory must contain AGENTS.md: {agents_dir}")
+        if not find_instruction_entry_file(agents_dir):
+            expected = " or ".join(INSTRUCTION_ENTRY_FILES)
+            raise FileNotFoundError(f"AGENTS directory must contain {expected}: {agents_dir}")
     capabilities = codex_exec_capabilities()
     missing = [key for key, present in capabilities.items() if not present]
     if missing:
@@ -136,10 +138,13 @@ def remove_control_instructions(workdir: Path) -> None:
 
 
 def install_agents_file(workdir: Path, agents_file: Path) -> None:
-    shutil.copy2(agents_file, workdir / "AGENTS.md")
+    remove_control_instructions(workdir)
+    target_name = agents_file.name if agents_file.name in INSTRUCTION_ENTRY_FILES else "AGENTS.md"
+    shutil.copy2(agents_file, workdir / target_name)
 
 
 def install_agents_dir(workdir: Path, agents_dir: Path) -> None:
+    remove_control_instructions(workdir)
     for source in agents_dir.iterdir():
         if source.name == ".git":
             continue
@@ -169,9 +174,18 @@ def new_batch_id() -> str:
     return uuid.uuid4().hex
 
 
+def find_instruction_entry_file(subject_dir: Path) -> Path | None:
+    for name in INSTRUCTION_ENTRY_FILES:
+        candidate = subject_dir / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def iter_subject_files(agents_file: Path | None, agents_dir: Path | None) -> list[tuple[str, Path]]:
     if agents_file is not None:
-        return [("AGENTS.md", agents_file)]
+        relative = agents_file.name if agents_file.name in INSTRUCTION_ENTRY_FILES else "AGENTS.md"
+        return [(relative, agents_file)]
     assert agents_dir is not None
     files: list[tuple[str, Path]] = []
     for path in agents_dir.rglob("*"):

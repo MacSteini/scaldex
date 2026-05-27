@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scaldex.fixture import create_fixture
-from scaldex.runner import GENERATED_MARKER, audit_subject_source, copy_fixture, init_git_snapshot, install_agents_dir, install_agents_file, prepare_generated_dir, remove_control_instructions, run_benchmark, run_one, selected_tasks, subject_fingerprint, synthesize_benchmark, validate_benchmark_inputs
+from scaldex.runner import GENERATED_MARKER, audit_subject_source, copy_fixture, find_instruction_entry_file, init_git_snapshot, install_agents_dir, install_agents_file, prepare_generated_dir, remove_control_instructions, run_benchmark, run_one, selected_tasks, subject_fingerprint, synthesize_benchmark, validate_benchmark_inputs
 
 
 class FakeProcess:
@@ -64,6 +64,26 @@ class RunnerVariantTests(unittest.TestCase):
             copy_fixture(fixture, workdir)
             install_agents_file(workdir, agents_file)
             self.assertEqual((workdir / "AGENTS.md").read_text(encoding="utf-8"), "# Custom\n")
+
+    def test_agents_variant_preserves_override_entry_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = create_fixture(base / "fixture")
+            workdir = base / "work"
+            agents_file = base / "AGENTS.override.md"
+            agents_file.write_text("# Override\n", encoding="utf-8")
+            copy_fixture(fixture, workdir)
+            install_agents_file(workdir, agents_file)
+            self.assertEqual((workdir / "AGENTS.override.md").read_text(encoding="utf-8"), "# Override\n")
+            self.assertFalse((workdir / "AGENTS.md").exists())
+
+    def test_finds_agents_override_when_agents_md_is_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            subject = Path(tmp) / "subject"
+            subject.mkdir()
+            override = subject / "AGENTS.override.md"
+            override.write_text("# Override\n", encoding="utf-8")
+            self.assertEqual(find_instruction_entry_file(subject), override)
 
     def test_agents_dir_installs_instruction_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -160,6 +180,16 @@ class RunnerVariantTests(unittest.TestCase):
             subject = base / "subject"
             subject.mkdir()
             (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            with patch("scaldex.runner.codex_exec_capabilities", return_value={"supports_json": True, "supports_output_schema": True, "supports_ignore_user_config": True, "supports_ignore_rules": True}):
+                validate_benchmark_inputs(fixture, None, 1, require_api_key=False, agents_dir=subject)
+
+    def test_validate_accepts_agents_dir_with_agents_override_md(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = create_fixture(base / "fixture")
+            subject = base / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.override.md").write_text("# Override\n", encoding="utf-8")
             with patch("scaldex.runner.codex_exec_capabilities", return_value={"supports_json": True, "supports_output_schema": True, "supports_ignore_user_config": True, "supports_ignore_rules": True}):
                 validate_benchmark_inputs(fixture, None, 1, require_api_key=False, agents_dir=subject)
 

@@ -6,7 +6,7 @@ This document explains what scaldex measures and how it decides whether a result
 
 scaldex measures a Codex instruction package supplied through `--subject-dir`.
 
-The subject directory must contain `AGENTS.md`, because Codex uses it as the instruction entry point. The directory may also contain `.codex/` and any other support files your setup needs. scaldex copies that package into the benchmark workspace for the `agents` variant.
+The subject directory must contain `AGENTS.md` or `AGENTS.override.md`, because Codex uses these files as instruction entry points. The directory may also contain `.codex/` and any other support files your setup needs. scaldex copies that package into the benchmark workspace for the `agents` variant.
 
 scaldex creates a temporary benchmark fixture with small source files, tests, release metadata and intentionally noisy generated files. The fixture is not your project; it gives both variants the same controlled workspace.
 

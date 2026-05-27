@@ -305,7 +305,7 @@ def write_multi_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
         "This report combines existing `result.json` files. It does not run Codex and does not spend API money.",
         "",
         (
-            "This report uses synthetic scaldex test data. It does not measure your `AGENTS.md`, your `.codex/` package, or any real Codex run."
+            "This report uses synthetic scaldex test data. It does not measure your instruction entry file, your `.codex/` package, or any real Codex run."
             if synthetic
             else "Use this summary to decide whether several task reports support a broader efficiency claim."
         ),

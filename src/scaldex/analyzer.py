@@ -82,7 +82,7 @@ WARNING_DESCRIPTIONS = {
     "non_repo_relative_relevant_files": "A run emitted absolute, home-relative, URL, or parent-directory paths in final relevant_files; use repo-relative paths only.",
     "nonzero_exit_code": "A Codex run exited with a non-zero status.",
     "risky_full_reads_increased": "The instruction package caused more risky full-file reads than the control run.",
-    "subject_contains_codex": "The tested subject includes a .codex/ directory, so this measures a full Codex instruction package, not only AGENTS.md.",
+    "subject_contains_codex": "The tested subject includes a .codex/ directory, so this measures a full Codex instruction package, not only the instruction entry file.",
     "subject_contains_codex_bin": "The tested subject includes .codex/bin/ helper scripts; they may be discovered even when they are not needed for the task.",
     "subject_contains_codex_skills": "The tested subject includes .codex/skills/; skills can add useful behaviour but also increase discoverable instruction material.",
     "subject_contains_codex_tooling": "The tested subject includes .codex/config/tooling/; validator/tooling config is included in the measured package.",

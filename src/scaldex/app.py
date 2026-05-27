@@ -13,7 +13,7 @@ from pathlib import Path
 from scaldex.fixture import create_fixture  # noqa: E402
 from scaldex.analyzer import TOOL_SANITY, explain_warning, human_bytes, write_codex_handoff_markdown  # noqa: E402
 from scaldex.result_console import load_result_json, print_result  # noqa: E402
-from scaldex.runner import GENERATED_MARKER, audit_subject_source, new_batch_id, run_benchmark  # noqa: E402
+from scaldex.runner import GENERATED_MARKER, audit_subject_source, find_instruction_entry_file, new_batch_id, run_benchmark  # noqa: E402
 from scaldex.schemas import TASKS  # noqa: E402
 
 
@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Measure whether a Codex instruction package helps or hurts token usage.",
         epilog=(
             "Typical flow:\n"
-            "  1. Put AGENTS.md and any support files in subject/.\n"
+            "  1. Put AGENTS.md or AGENTS.override.md and any support files in subject/.\n"
             "  2. Run a low-cost smoke test: scaldex --model gpt-5.4\n"
             "  3. Read 'What this means' and 'What to do now' as the human control layer.\n"
             "  4. For Codex-assisted follow-up, use scaldex-run/CODEX_HANDOFF.md.\n"
@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--all-tasks", action="store_true", help="Run every built-in task. This increases paid Codex runs.")
     parser.add_argument("--heartbeat-seconds", type=float, default=10.0, help="Seconds between progress heartbeat messages.")
     parser.add_argument("--max-run-seconds", type=float, default=300.0, help="Maximum seconds before one Codex run is stopped.")
-    parser.add_argument("--subject-mode", choices=("package", "agents-md"), default="package", help="Measure the whole package or AGENTS.md only.")
+    parser.add_argument("--subject-mode", choices=("package", "agents-md"), default="package", help="Measure the whole package or only the instruction entry file.")
     parser.add_argument("--history-dir", type=Path, default=Path("scaldex-history"), help="Folder for compact archived reports from previous default runs.")
     parser.add_argument("--no-archive-previous-result", action="store_true", help="Do not archive the previous generated run before replacing --run-dir.")
     parser.add_argument("--print-result", type=Path, help="Print an existing result.json without an API key, subject audit, or paid Codex run.")
@@ -217,15 +217,16 @@ def main(argv: list[str] | None = None) -> int:
     root = Path.cwd().resolve()
     subject_arg = args.subject_dir.expanduser()
     subject_dir = (subject_arg if subject_arg.is_absolute() else root / subject_arg).resolve()
-    if not (subject_dir / "AGENTS.md").is_file():
-        raise SystemExit(f"Missing required file: {subject_dir / 'AGENTS.md'}")
+    instruction_entry_file = find_instruction_entry_file(subject_dir)
+    if instruction_entry_file is None:
+        raise SystemExit(f"Missing required file: {subject_dir / 'AGENTS.md'} or {subject_dir / 'AGENTS.override.md'}")
     status(f"Subject checked: {subject_dir}")
     agents_file = None
     agents_dir = None
     if args.subject_mode == "package":
         agents_dir = subject_dir
     else:
-        agents_file = subject_dir / "AGENTS.md"
+        agents_file = instruction_entry_file
     subject_audit = audit_subject_source(agents_file, agents_dir, subject_mode=args.subject_mode)
     batch_id = new_batch_id()
     status(
