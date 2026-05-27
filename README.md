@@ -72,6 +72,23 @@ scaldex --model gpt-5.4 --subject-dir subject --task-id login_test_failure --rep
 
 This command starts two paid Codex runs: one `control` run and one `agents` run.
 
+The first-run flow is:
+
+```mermaid
+flowchart TD
+    A["Prepare subject/"] --> B["Run smoke benchmark"]
+    B --> C{"What to do now?"}
+    C -->|"Clean smoke"| D["Run the same task with --repeats 3"]
+    C -->|"Quality or warning blocker"| E["Read RESULT.md or use CODEX_HANDOFF.md with Codex"]
+    D --> F{"Decision-grade result"}
+    F -->|"Effective"| G["Keep the report as task evidence"]
+    F -->|"Not effective"| H["Do not claim efficiency; inspect the task-specific cause"]
+    G --> I["Summarise multiple reports"]
+    I --> J{"All 8 tasks decision-grade and at least 5 effective?"}
+    J -->|"Yes"| K["Global efficiency claim allowed"]
+    J -->|"No"| L["Workflow-specific evidence only"]
+```
+
 For machine-readable prerequisite output:
 
 ```sh
