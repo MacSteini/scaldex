@@ -67,6 +67,8 @@ Put `AGENTS.md` in `subject/`. If the package depends on `.codex/` or other supp
 
 The default mode measures the whole `subject/` package. Use `--subject-mode agents-md` only for a diagnostic AGENTS-only run.
 
+Keep `scaldex-run/`, `scaldex-history/`, and other generated report folders outside `subject/`. scaldex refuses nested subject/output layouts because generated reports would pollute future measurements.
+
 ## Run a smoke benchmark
 
 A smoke run is the low-cost first check. It runs one paired task: one `control` run and one `agents` run.
@@ -191,6 +193,7 @@ Start with smoke. Continue only when the terminal output or `CODEX_HANDOFF.md` t
 - scaldex keeps subject warnings separate from benchmark warnings.
 - scaldex treats benchmark warnings as blockers for efficiency claims.
 - scaldex does not store your Codex API key in generated reports.
+- scaldex refuses output layouts that would place generated reports inside the measured subject package.
 
 ## Licence
 

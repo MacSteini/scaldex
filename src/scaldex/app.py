@@ -78,11 +78,24 @@ def tool_sanity_text() -> str:
     )
 
 
-def reset_run_dir(run_dir: Path, root: Path, subject_dir: Path) -> None:
+def paths_nested(first: Path, second: Path) -> bool:
+    return first == second or first.is_relative_to(second) or second.is_relative_to(first)
+
+
+def validate_output_layout(root: Path, subject_dir: Path, run_dir: Path, history_dir: Path) -> None:
     if run_dir == root:
         raise SystemExit("Refusing to use the current folder itself as --run-dir.")
-    if run_dir == subject_dir or subject_dir.is_relative_to(run_dir):
-        raise SystemExit("Refusing to place subject/ inside --run-dir because generated cleanup would remove it.")
+    if history_dir == root:
+        raise SystemExit("Refusing to use the current folder itself as --history-dir.")
+    if paths_nested(subject_dir, run_dir):
+        raise SystemExit("Refusing to nest subject/ and --run-dir because cleanup or generated files would make measurements unsafe.")
+    if paths_nested(subject_dir, history_dir):
+        raise SystemExit("Refusing to place scaldex history inside subject/ because it would pollute future measurements.")
+    if paths_nested(run_dir, history_dir):
+        raise SystemExit("Refusing to nest --run-dir and --history-dir because archiving or cleanup would be unsafe.")
+
+
+def reset_run_dir(run_dir: Path, root: Path) -> None:
     default_run_dir = (root / "scaldex-run").resolve()
     if run_dir.exists() and run_dir != default_run_dir and any(run_dir.iterdir()) and not (run_dir / GENERATED_MARKER).exists():
         raise SystemExit(f"Refusing to replace non-scaldex --run-dir without {GENERATED_MARKER}: {run_dir}")
@@ -234,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
 
     run_dir = (root / args.run_dir).resolve()
     history_dir = (root / args.history_dir).resolve()
+    validate_output_layout(root, subject_dir, run_dir, history_dir)
     raw_dir = run_dir / "raw"
     fixture_dir = raw_dir / "fixture"
     results_dir = raw_dir / "results"
@@ -256,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
             if archived is not None:
                 status(f"Archived previous compact report: {archived}")
         status(f"Replacing previous run folder: {run_dir}")
-    reset_run_dir(run_dir, root, subject_dir)
+    reset_run_dir(run_dir, root)
     if task_ids is None:
         status("Task selection: all tasks.")
     else:

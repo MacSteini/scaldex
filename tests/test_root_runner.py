@@ -247,7 +247,43 @@ class RootRunnerTests(unittest.TestCase):
             with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
                 with self.assertRaises(SystemExit) as ctx:
                     module.main(["--model", "model", "--subject-dir", "scaldex-run/subject"])
-            self.assertIn("Refusing to place subject/ inside --run-dir", str(ctx.exception))
+            self.assertIn("Refusing to nest subject/ and --run-dir", str(ctx.exception))
+
+    def test_refuses_run_dir_inside_subject(self) -> None:
+        module = load_root_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subject = root / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
+                with self.assertRaises(SystemExit) as ctx:
+                    module.main(["--model", "model", "--run-dir", "subject/scaldex-run"])
+            self.assertIn("Refusing to nest subject/ and --run-dir", str(ctx.exception))
+
+    def test_refuses_history_dir_inside_subject(self) -> None:
+        module = load_root_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subject = root / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
+                with self.assertRaises(SystemExit) as ctx:
+                    module.main(["--model", "model", "--history-dir", "subject/scaldex-history"])
+            self.assertIn("Refusing to place scaldex history inside subject/", str(ctx.exception))
+
+    def test_refuses_history_dir_inside_run_dir(self) -> None:
+        module = load_root_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subject = root / "subject"
+            subject.mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
+                with self.assertRaises(SystemExit) as ctx:
+                    module.main(["--model", "model", "--history-dir", "scaldex-run/history"])
+            self.assertIn("Refusing to nest --run-dir and --history-dir", str(ctx.exception))
 
     def test_refuses_custom_unmarked_nonempty_run_dir(self) -> None:
         module = load_root_runner()

@@ -50,6 +50,7 @@ Expected behaviour:
 - Summary does not run Codex.
 - Missing result paths fail with a clear recovery message.
 - Handoff paths point to the report beside the replayed `result.json`.
+- Custom `--run-dir` and `--history-dir` values cannot nest inside `subject/` or each other.
 
 ## Paid run policy
 
