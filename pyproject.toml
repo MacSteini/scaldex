@@ -4,10 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scaldex"
-version = "0.1.0"
-description = "Reproducible Codex AGENTS.md measurement harness"
+version = "1.0.0"
+description = "Codex-first measurement harness for AGENTS.md and .codex instruction packages"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
+license = "MIT"
 
 [project.scripts]
 scaldex = "scaldex.cli:main"
