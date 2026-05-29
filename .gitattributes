@@ -1,0 +1,40 @@
+# Keep generated GitHub source archives focused on source, docs and tests.
+.gitattributes export-ignore
+.gitignore export-ignore
+.github export-ignore
+.github/** export-ignore
+
+# Published assets and site output are handled outside source archives.
+img export-ignore
+img/** export-ignore
+site export-ignore
+site/** export-ignore
+
+# Local Python and test artefacts.
+__pycache__ export-ignore
+__pycache__/** export-ignore
+*.py[cod] export-ignore
+.pytest_cache export-ignore
+.pytest_cache/** export-ignore
+.venv export-ignore
+.venv/** export-ignore
+build export-ignore
+build/** export-ignore
+dist export-ignore
+dist/** export-ignore
+*.egg-info export-ignore
+*.egg-info/** export-ignore
+
+# Local benchmark inputs and generated reports.
+subject export-ignore
+subject/** export-ignore
+scaldex-run export-ignore
+scaldex-run/** export-ignore
+scaldex-history export-ignore
+scaldex-history/** export-ignore
+scaldex-summary export-ignore
+scaldex-summary/** export-ignore
+results export-ignore
+results/** export-ignore
+fixtures export-ignore
+fixtures/** export-ignore
