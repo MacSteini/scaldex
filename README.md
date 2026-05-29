@@ -1,3 +1,16 @@
+<!-- markdownlint-disable MD033 MD041 -->
+
+<div align="center">
+
+![scaldex](img/banner.png)
+
+![GitHub Release](https://img.shields.io/github/v/release/macsteini/scaldex?label=Release&color=blue)
+[![Python: >=3.11](https://img.shields.io/badge/Python-%3E%3D3.11-blue)](#requirements)
+[![CLI: scaldex](https://img.shields.io/badge/CLI-scaldex-blue)](#install-from-github-source)
+[![Licence: MIT](https://img.shields.io/github/license/macsteini/scaldex?label=Licence&color=blue)](LICENCE "MIT Licence")
+
+</div>
+
 # scaldex
 
 scaldex measures whether a Codex instruction package helps or hurts Codex token use.
@@ -242,6 +255,10 @@ Start with smoke. Continue only when the terminal output or `CODEX_HANDOFF.md` t
 - scaldex rejects symlinks inside the measured subject package.
 - scaldex refuses output layouts that would place generated reports inside the measured subject package.
 
+## Contributing
+
+[Contributions are welcome!](CONTRIBUTING.md "Contributions are welcome!")
+
 ## Licence
 
-MIT
+This project uses the [MIT Licence](LICENCE "MIT Licence"). You may use, change, and distribute it in compliance with the licence terms.
