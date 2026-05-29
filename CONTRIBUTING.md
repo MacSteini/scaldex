@@ -23,13 +23,21 @@ Do not run paid Codex benchmarks for routine development or pull requests unless
 
 ## Local checks
 
+Install the development extras in a local virtual environment:
+
+```sh
+python3 -m venv ../.venv
+source ../.venv/bin/activate
+python -m pip install -e '.[dev]'
+```
+
 Run no-cost checks before submitting a change:
 
 ```sh
-env PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py'
-python3 -m compileall run_scaldex.py src tests
-python3 run_scaldex.py --help
-env PYTHONPATH=src python3 -c 'import sys; from scaldex.cli import main; raise SystemExit(main(sys.argv[1:]))' bench doctor
+python -m pytest -p no:cacheprovider
+python -m compileall run_scaldex.py src tests
+python run_scaldex.py --help
+python -c 'import sys; from scaldex.cli import main; raise SystemExit(main(sys.argv[1:]))' bench doctor
 git diff --check
 ```
 

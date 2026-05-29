@@ -11,6 +11,11 @@ requires-python = ">=3.11"
 dependencies = []
 license = "MIT"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
 [project.scripts]
 scaldex = "scaldex.cli:main"
 

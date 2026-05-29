@@ -152,7 +152,7 @@ The run folder contains:
 - `scaldex-run/CODEX_HANDOFF.md`: Codex-facing follow-up brief.
 - `scaldex-run/result.json`: machine-readable report.
 
-For a deeper explanation of the scoring model, read [docs/MEASUREMENT-MODEL.md](docs/MEASUREMENT-MODEL.md).
+For a deeper explanation of the scoring model, read the [measurement model](docs/MEASUREMENT-MODEL.md).
 
 scaldex results are workflow-specific. A task that is `not_effective` does not prove that your instruction package is bad; it proves that the package did not help enough for that measured workflow under the benchmark rules.
 
@@ -222,7 +222,7 @@ Use `--task-id` to choose one or more built-in benchmark tasks:
 - `docs_update_scope`: documentation-scope task; checks whether Codex finds the right docs and source references for a documentation change.
 - `large_repo_noise`: noisy-repo task; checks whether Codex finds relevant files while avoiding generated or irrelevant noise.
 
-Read [docs/BUILT-IN-TASKS.md](docs/BUILT-IN-TASKS.md) before running the full task set.
+Read the [built-in task guide](docs/BUILT-IN-TASKS.md) before running the full task set.
 
 The tasks are realistic proxy scenarios, not a copy of your own project. They show where your package helps Codex, where the package stays neutral or harmful, and where more task-specific optimisation needs evidence.
 
