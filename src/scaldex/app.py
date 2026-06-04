@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Typical flow:\n"
             "  1. Put AGENTS.md or AGENTS.override.md and any support files in subject/.\n"
-            "  2. Run a low-cost smoke test: scaldex --model gpt-5.4\n"
+            "  2. Run a low-cost smoke test: scaldex --model gpt-5.5\n"
             "  3. Read 'What this means' and 'What to do now' as the human control layer.\n"
             "  4. For Codex-assisted follow-up, use scaldex-run/CODEX_HANDOFF.md.\n"
             "  5. Run --repeats 3 only when the handoff or terminal output tells you to.\n"

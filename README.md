@@ -7,7 +7,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/macsteini/scaldex?label=Release&color=blue)
 [![Python: >=3.11](https://img.shields.io/badge/Python-%3E%3D3.11-blue)](#requirements)
 [![CLI: scaldex](https://img.shields.io/badge/CLI-scaldex-blue)](#install-from-github-source)
-[![Licence: AGPL-3.0-only](https://img.shields.io/github/license/macsteini/scaldex?label=Licence&color=blue)](LICENCE "GNU Affero General Public License version 3 only")
+[![Licence: AGPL-3.0-only](https://img.shields.io/badge/Licence-AGPL_3.0_only-blue)](LICENCE "GNU Affero General Public License version 3 only")
 
 </div>
 
@@ -80,7 +80,7 @@ Use this checklist for your first measurement:
 The smoke command is:
 
 ```sh
-scaldex --model gpt-5.4 --subject-dir subject --task-id login_test_failure --repeats 1
+scaldex --model gpt-5.5 --subject-dir subject --task-id login_test_failure --repeats 1
 ```
 
 This command starts two paid Codex runs: one `control` run and one `agents` run.
@@ -173,7 +173,7 @@ Do not improve the measured package from a smoke win alone. Smoke evidence only 
 Use at least three paired repeats only when the smoke result says the task is eligible:
 
 ```sh
-scaldex --model gpt-5.4 --subject-dir subject --task-id login_test_failure --repeats 3
+scaldex --model gpt-5.5 --subject-dir subject --task-id login_test_failure --repeats 3
 ```
 
 Decision-grade evidence is still task-specific. Do not make a global efficiency claim from one task.

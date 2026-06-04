@@ -111,7 +111,7 @@ class CliTests(unittest.TestCase):
             main(["--help"])
         self.assertEqual(ctx.exception.code, 0)
         help_text = output.getvalue()
-        self.assertIn("scaldex --model gpt-5.4", help_text)
+        self.assertIn("scaldex --model gpt-5.5", help_text)
         self.assertIn("scaldex --print-result scaldex-run/result.json", help_text)
         self.assertNotIn("fixture", help_text)
 
