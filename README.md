@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[scaldex](https://github.com/macsteini/scaldex/blob/main/img/banner.png?raw=true)
+![scaldex](https://github.com/macsteini/scaldex/blob/main/img/banner.png?raw=true)
 
 ![GitHub Release](https://img.shields.io/github/v/release/macsteini/scaldex?label=Release&color=blue)
 [![Python: >=3.11](https://img.shields.io/badge/Python-%3E%3D3.11-blue)](#requirements)
