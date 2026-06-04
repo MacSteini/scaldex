@@ -96,6 +96,37 @@ class RootRunnerTests(unittest.TestCase):
         self.assertIn("Use 1 for smoke, 3+", help_text)
         self.assertIn("for decision-grade evidence.", help_text)
 
+    def test_wrapper_routes_bench_doctor(self) -> None:
+        module = load_root_runner()
+        checks = {
+            "git": True,
+            "codex": True,
+            "codex_version": "codex-cli test",
+            "python": "3.test",
+            "codex_api_key_present": False,
+            "supports_json": True,
+            "supports_output_schema": True,
+            "supports_ignore_user_config": True,
+            "supports_ignore_rules": True,
+        }
+        output = io.StringIO()
+        with redirect_stdout(output), patch("scaldex.cli.doctor", return_value=checks):
+            self.assertEqual(module.main(["bench", "doctor"]), 0)
+        self.assertIn("=== scaldex doctor ===", output.getvalue())
+        self.assertIn("Ready for paid benchmark runs: yes", output.getvalue())
+        self.assertIn("Codex API key: not set; scaldex will ask", output.getvalue())
+
+    def test_wrapper_routes_result_show(self) -> None:
+        module = load_root_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            outputs = write_fake_outputs(root)
+            output = io.StringIO()
+            with Cwd(root), redirect_stdout(output), redirect_stderr(io.StringIO()), patch.dict("os.environ", {}, clear=True), patch.object(module.getpass, "getpass", side_effect=AssertionError("API key prompt should not run")):
+                self.assertEqual(module.main(["result", "show", str(outputs["result_json"])]), 0)
+        self.assertIn("=== scaldex result ===", output.getvalue())
+        self.assertIn("Verdict: effective", output.getvalue())
+
     def test_missing_subject_agents_exits_cleanly(self) -> None:
         module = load_root_runner()
         with tempfile.TemporaryDirectory() as tmp:

@@ -37,7 +37,7 @@ Run no-cost checks before submitting a change:
 python -m pytest -p no:cacheprovider
 python -m compileall run_scaldex.py src tests
 python run_scaldex.py --help
-python -c 'import sys; from scaldex.cli import main; raise SystemExit(main(sys.argv[1:]))' bench doctor
+python run_scaldex.py bench doctor
 git diff --check
 ```
 

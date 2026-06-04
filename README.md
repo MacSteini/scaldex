@@ -62,7 +62,7 @@ If you do not want to install the command yet, stay in the downloaded `scaldex` 
 python3 run_scaldex.py --help
 ```
 
-The examples below use the installed `scaldex` command. With the wrapper, replace `scaldex` with `python3 run_scaldex.py` for the main benchmark command.
+The examples below use the installed `scaldex` command. With the wrapper, replace `scaldex` with `python3 run_scaldex.py`.
 
 ## First run checklist
 
