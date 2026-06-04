@@ -13,6 +13,14 @@ dist/
 coverage.xml
 htmlcov/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+*.log
+*.tmp
+*.bak
 
 site/
 subject/
