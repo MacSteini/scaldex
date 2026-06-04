@@ -1,10 +1,12 @@
-# Keep generated GitHub source archives focused on source, docs and tests.
+# Keep generated GitHub source archives focused on installable source and tests.
 .gitattributes export-ignore
 .gitignore export-ignore
 .github export-ignore
 .github/** export-ignore
 
-# Published assets and site output are handled outside source archives.
+# Published docs, assets and site output are handled outside source archives.
+docs export-ignore
+docs/** export-ignore
 img export-ignore
 img/** export-ignore
 site export-ignore

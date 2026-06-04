@@ -7,7 +7,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/macsteini/scaldex?label=Release&color=blue)
 [![Python: >=3.11](https://img.shields.io/badge/Python-%3E%3D3.11-blue)](#requirements)
 [![CLI: scaldex](https://img.shields.io/badge/CLI-scaldex-blue)](#install-from-github-source)
-[![Licence: MIT](https://img.shields.io/github/license/macsteini/scaldex?label=Licence&color=blue)](LICENCE "MIT Licence")
+[![Licence: AGPL-3.0-only](https://img.shields.io/github/license/macsteini/scaldex?label=Licence&color=blue)](LICENCE "GNU Affero General Public License version 3 only")
 
 </div>
 
@@ -152,7 +152,7 @@ The run folder contains:
 - `scaldex-run/CODEX_HANDOFF.md`: Codex-facing follow-up brief.
 - `scaldex-run/result.json`: machine-readable report.
 
-For a deeper explanation of the scoring model, read the [measurement model](docs/MEASUREMENT-MODEL.md).
+For a deeper explanation of the scoring model, read the [measurement model](https://github.com/macsteini/scaldex/blob/main/docs/MEASUREMENT-MODEL.md).
 
 scaldex results are workflow-specific. A task that is `not_effective` does not prove that your instruction package is bad; it proves that the package did not help enough for that measured workflow under the benchmark rules.
 
@@ -222,7 +222,7 @@ Use `--task-id` to choose one or more built-in benchmark tasks:
 - `docs_update_scope`: documentation-scope task; checks whether Codex finds the right docs and source references for a documentation change.
 - `large_repo_noise`: noisy-repo task; checks whether Codex finds relevant files while avoiding generated or irrelevant noise.
 
-Read the [built-in task guide](docs/BUILT-IN-TASKS.md) before running the full task set.
+Read the [built-in task guide](https://github.com/macsteini/scaldex/blob/main/docs/BUILT-IN-TASKS.md) before running the full task set.
 
 The tasks are realistic proxy scenarios, not a copy of your own project. They show where your package helps Codex, where the package stays neutral or harmful, and where more task-specific optimisation needs evidence.
 
@@ -261,4 +261,6 @@ Start with smoke. Continue only when the terminal output or `CODEX_HANDOFF.md` t
 
 ## Licence
 
-This project uses the [MIT Licence](LICENCE "MIT Licence"). You may use, change, and distribute it in compliance with the licence terms.
+This project uses the [GNU Affero General Public License version 3 only](LICENCE "GNU Affero General Public License version 3 only"). You may use, change and distribute it under the licence terms.
+
+The project name, branding and public presentation are not granted as trade marks or endorsements by the software licence. See the [project notice](NOTICE "Project notice") for trade mark, service, API-key and benchmark-evidence boundaries.

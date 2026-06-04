@@ -1,0 +1,22 @@
+scaldex
+Copyright (c) 2026 MacSteini
+
+This project uses the GNU Affero General Public License version 3 only
+(AGPL-3.0-only). See LICENCE for the full licence text.
+
+The project name, branding, visual identity and public presentation of
+scaldex are not granted as trade marks, endorsements or official approval
+by the software licence.
+
+scaldex is a local CLI measurement tool for Codex instruction packages.
+It can invoke the Codex CLI and OpenAI or Codex services when the user
+starts a paid benchmark run. Those external services, names, APIs and
+outputs remain subject to their own terms, policies and availability.
+
+Codex and OpenAI API keys are user-owned. scaldex does not provide a
+shared API key and does not write the key into generated reports, history
+or configuration files.
+
+scaldex reports benchmark evidence. Results are task-specific measurement
+evidence, not a guarantee of future Codex behaviour, software quality,
+cost savings, legal compliance or operational suitability.
