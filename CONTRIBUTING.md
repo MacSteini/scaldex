@@ -23,11 +23,9 @@ Do not run paid Codex benchmarks for routine development or pull requests unless
 
 ## Local checks
 
-Install the development extras in a local virtual environment:
+Create and activate a virtual environment with your preferred workflow, then install the development extras:
 
 ```sh
-python3 -m venv ../.venv
-source ../.venv/bin/activate
 python -m pip install -e '.[dev]'
 ```
 
