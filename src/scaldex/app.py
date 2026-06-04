@@ -10,11 +10,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scaldex.fixture import create_fixture  # noqa: E402
-from scaldex.analyzer import TOOL_SANITY, explain_warning, human_bytes, write_codex_handoff_markdown  # noqa: E402
-from scaldex.result_console import load_result_json, print_result  # noqa: E402
-from scaldex.runner import GENERATED_MARKER, audit_subject_source, find_instruction_entry_file, new_batch_id, run_benchmark  # noqa: E402
-from scaldex.schemas import TASKS  # noqa: E402
+from scaldex.fixture import create_fixture
+from scaldex.analyzer import TOOL_SANITY, explain_warning, human_bytes, write_codex_handoff_markdown
+from scaldex.result_console import load_result_json, print_result
+from scaldex.runner import GENERATED_MARKER, audit_subject_source, find_instruction_entry_file, new_batch_id, run_benchmark
+from scaldex.schemas import TASKS
 
 
 class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):

@@ -1,6 +1,7 @@
 # Keep generated GitHub source archives focused on installable source and tests.
 .gitattributes export-ignore
 .gitignore export-ignore
+.flake8 export-ignore
 .github export-ignore
 .github/** export-ignore
 .DS_Store export-ignore
