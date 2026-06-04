@@ -3,6 +3,8 @@
 .gitignore export-ignore
 .github export-ignore
 .github/** export-ignore
+.DS_Store export-ignore
+**/.DS_Store export-ignore
 
 # Published docs, assets and site output are handled outside source archives.
 docs export-ignore
@@ -16,6 +18,7 @@ site/** export-ignore
 __pycache__ export-ignore
 __pycache__/** export-ignore
 *.py[cod] export-ignore
+.python-version export-ignore
 .pytest_cache export-ignore
 .pytest_cache/** export-ignore
 .venv export-ignore
@@ -26,6 +29,11 @@ dist export-ignore
 dist/** export-ignore
 *.egg-info export-ignore
 *.egg-info/** export-ignore
+.coverage export-ignore
+.coverage.* export-ignore
+coverage.xml export-ignore
+htmlcov export-ignore
+htmlcov/** export-ignore
 
 # Local benchmark inputs and generated reports.
 subject export-ignore

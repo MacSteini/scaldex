@@ -1,3 +1,6 @@
+*.DS_Store
+.DS_Store
+
 __pycache__/
 *.py[cod]
 .python-version
@@ -6,7 +9,15 @@ build/
 dist/
 *.egg-info/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 .pytest_cache/
+
+site/
+subject/
+scaldex-run/
+scaldex-history/
+scaldex-summary/
 results/
 fixtures/
