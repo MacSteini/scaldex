@@ -8,6 +8,16 @@ scaldex measures a Codex instruction package supplied through `--subject-dir`.
 
 The subject directory must contain `AGENTS.md` or `AGENTS.override.md`, because Codex uses these files as instruction entry points. The directory may also contain `.codex/` and any other support files your setup needs. scaldex copies that package into the benchmark workspace for the `agents` variant.
 
+Example:
+
+```text
+subject/
+  AGENTS.md
+  .codex/
+```
+
+`subject/` is the package under test, not the scaldex project folder. Keep generated report folders such as `scaldex-run/` and `scaldex-history/` outside it.
+
 scaldex creates a temporary benchmark fixture with small source files, tests, release metadata and intentionally noisy generated files. The fixture is not your project; it gives both variants the same controlled workspace.
 
 ## The two variants
@@ -158,3 +168,5 @@ Each run writes:
 - `result.json`: machine-readable evidence.
 
 Use `RESULT.md` if you want to inspect the result yourself. Use `CODEX_HANDOFF.md` if you want Codex-assisted interpretation or package improvement.
+
+For the end-to-end improvement loop, read the [Codex instruction workflow](CODEX-INSTRUCTION-WORKFLOW.md).
