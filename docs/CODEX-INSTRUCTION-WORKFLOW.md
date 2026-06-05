@@ -50,7 +50,7 @@ Manual follow-up:
 Codex-assisted follow-up:
 
 - Give Codex `scaldex-run/CODEX_HANDOFF.md`.
-- Give Codex the measured instruction package if it needs to inspect or edit it.
+- Give Codex the measured `subject/` package when you want assessment or optimisation.
 - Tell Codex what it may do and that paid benchmark runs need explicit approval.
 
 Evidence-first follow-up:
@@ -66,9 +66,11 @@ Use this prompt when you want Codex to act on a scaldex handoff:
 ```text
 I use a CLI tool called scaldex to measure whether my Codex instruction package saves non-cached input tokens without degrading task quality. The package contains an AGENTS.md or AGENTS.override.md entry file and may include optional support files or folders.
 
-The file CODEX_HANDOFF.md contains scaldex's benchmark summary, requested action, allowed actions, forbidden actions, quality gates and evidence grade from my latest run.
+I will provide CODEX_HANDOFF.md and the measured subject/ package. The subject/ package contains the instruction entry file and any support files or folders that were measured.
 
-Please read CODEX_HANDOFF.md and use it to help with my measured Codex instruction package.
+The file CODEX_HANDOFF.md contains scaldex’s benchmark summary, requested action, allowed actions, forbidden actions, quality gates and evidence grade from my latest run.
+
+Please read both CODEX_HANDOFF.md and the measured subject/ package before assessing or changing the instruction package.
 
 First, state whether the result is smoke or decision-grade evidence. Then state the requested action from the handoff and any blockers.
 

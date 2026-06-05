@@ -880,7 +880,7 @@ def quality_gate_text(result: dict[str, Any]) -> str:
 def decision_run_command(result: dict[str, Any]) -> str:
     run_config = result.get("run_config", {})
     if not isinstance(run_config, dict) or not run_config.get("model"):
-        return "Run the same task again with --repeats 3 and the same --model, --subject-dir, and --task-id options."
+        return "Run the same task again with --repeats 3 and the same --model, --subject-dir and --task-id options."
     command = ["python3", "run_scaldex.py", "--model", str(run_config["model"])]
     if run_config.get("subject_dir"):
         command.extend(["--subject-dir", str(run_config["subject_dir"])])
@@ -944,7 +944,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         "",
         f"Verdict: **{result['verdict']}**",
         "",
-        f"For Codex-assisted follow-up, use `{artifacts.get('codex_handoff_md', 'CODEX_HANDOFF.md') if isinstance(artifacts, dict) else 'CODEX_HANDOFF.md'}`.",
+        f"For Codex-assisted follow-up, use `{artifacts.get('codex_handoff_md', 'CODEX_HANDOFF.md') if isinstance(artifacts, dict) else 'CODEX_HANDOFF.md'}` together with the measured `subject/` package and a clear task.",
         "",
         "## Decision Summary",
         "",
@@ -1111,9 +1111,11 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
     lines = [
         "# scaldex codex instruction",
         "",
-        "Role: You are Codex analyzing a scaldex benchmark result.",
+        "Role: You are Codex analysing a scaldex benchmark result.",
         "",
         "User goal: improve the measured instruction package only when evidence supports it.",
+        "",
+        "Required input: use this handoff together with the measured `subject/` package supplied by the user. Do not assess or change instructions from the handoff alone.",
         "",
         "Your job: follow the requested action below without making unsupported efficiency claims.",
         "",
@@ -1164,7 +1166,8 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         "## Allowed Actions",
         "",
         "- Explain this measurement using the primary metric and quality gates above.",
-        "- Ask the user for the measured instruction package if you need to inspect or modify it.",
+        "- Ask the user for the measured `subject/` package if it was not provided.",
+        "- Inspect the measured instruction package supplied by the user before proposing changes.",
         "- Propose minimal instruction-package changes only when the requested action permits optimisation work.",
         "- Ask the user before running additional paid benchmarks.",
         "",
@@ -1173,14 +1176,14 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         f"- {codex_forbidden_action(result)}",
         "- Do not use unpaired variant medians as the decision metric.",
         "- Do not ignore failed quality gates, missing expected files, invalid final JSON, missing usage data, or benchmark warnings.",
-        "- Do not edit benchmark fixture files as if they were the user's instruction package.",
+        "- Do not edit benchmark fixture files as if they were the user’s instruction package.",
         "",
         "## Files To Inspect Next",
         "",
         "- This handoff file.",
         "- `RESULT.md` for the human-readable report.",
         "- `result.json` for machine-readable evidence.",
-        "- The measured instruction package supplied by the user.",
+        "- The measured `subject/` package supplied by the user.",
         "",
         "## Output Expected From Codex",
         "",

@@ -58,7 +58,7 @@ The primary metric is:
 paired median non-cached input token delta
 ```
 
-In plain English: for each task repeat, scaldex subtracts the control run's non-cached input tokens from the matching agents run's non-cached input tokens. It then takes the median of those paired deltas.
+In plain English: for each task repeat, scaldex subtracts the control run’s non-cached input tokens from the matching agents run’s non-cached input tokens. It then takes the median of those paired deltas.
 
 Negative is better: `agents` used fewer non-cached input tokens than `control`.
 
@@ -167,6 +167,6 @@ Each run writes:
 - `CODEX_HANDOFF.md`: Codex-facing follow-up brief.
 - `result.json`: machine-readable evidence.
 
-Use `RESULT.md` if you want to inspect the result yourself. Use `CODEX_HANDOFF.md` if you want Codex-assisted interpretation or package improvement.
+Use `RESULT.md` if you want to inspect the result yourself. Use `CODEX_HANDOFF.md` with the measured `subject/` package if you want Codex-assisted interpretation or package improvement.
 
 For the end-to-end improvement loop, read the [Codex instruction workflow](CODEX-INSTRUCTION-WORKFLOW.md).

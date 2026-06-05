@@ -86,10 +86,10 @@ def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
     scope = decision.get("scope", "task")
     if next_action == "eligible_for_decision_run":
         if scope == "result_set":
-            return "Run the same task set with --repeats 3 before trusting the result; for Codex-assisted follow-up, use the handoff file."
-        return "Run this same task with --repeats 3 before trusting the result; for Codex-assisted follow-up, use the handoff file."
+            return "Run the same task set with --repeats 3 before trusting the result; for Codex-assisted follow-up, provide the handoff file and measured package."
+        return "Run this same task with --repeats 3 before trusting the result; for Codex-assisted follow-up, provide the handoff file and measured package."
     if next_action == "stop_fix_quality_or_task_behavior":
-        return "Stop before spending more money. Inspect the listed blockers yourself, or use the handoff for Codex-assisted follow-up."
+        return "Stop before spending more money. Inspect the listed blockers yourself, or provide the handoff file and measured package for Codex-assisted follow-up."
     if next_action == "record_decision_grade_win":
         if scope == "result_set":
             return "Keep this evidence and check global claim eligibility; the handoff can help Codex compare reports safely."
@@ -265,6 +265,7 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     print("Codex handoff")
     if codex_handoff:
         print(f"- For Codex-assisted follow-up, use: {display_path(codex_handoff)}")
+        print("- Provide with: the measured subject/ package and a clear task.")
     else:
         print("- Codex-assisted follow-up file was not found beside this result.")
     print(f"- Purpose: {handoff_purpose(decision)}")

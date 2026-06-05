@@ -92,10 +92,10 @@ The run folder contains:
 You have three safe paths:
 
 - read `RESULT.md` and improve the instruction package manually
-- give `CODEX_HANDOFF.md` to Codex with a clear optimisation request
+- give `CODEX_HANDOFF.md` and the measured `subject/` content to Codex with a clear optimisation request
 - stop changing the package and collect stronger decision-grade evidence when scaldex tells you to
 
-`CODEX_HANDOFF.md` is a brief, not a self-contained request. If you want Codex-assisted follow-up, give Codex both the file and an explicit task. The [Codex instruction workflow guide](docs/CODEX-INSTRUCTION-WORKFLOW.md) includes a copy-paste prompt.
+`CODEX_HANDOFF.md` is a brief, not a self-contained request. If you want Codex-assisted follow-up, give Codex the handoff, the measured `subject/` content and an explicit task. The [Codex instruction workflow guide](docs/CODEX-INSTRUCTION-WORKFLOW.md) includes a copy-paste prompt.
 
 Do not improve the measured package from a smoke win alone. Smoke evidence only tells you whether a decision-grade run is worth the cost.
 
