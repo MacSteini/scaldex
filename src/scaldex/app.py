@@ -12,7 +12,7 @@ from pathlib import Path
 
 from scaldex.fixture import create_fixture
 from scaldex.analyzer import TOOL_SANITY, explain_warning, human_bytes, write_codex_handoff_markdown
-from scaldex.result_console import load_result_json, print_result
+from scaldex.result_console import display_path, load_result_json, print_result
 from scaldex.runner import GENERATED_MARKER, audit_subject_source, find_instruction_entry_file, new_batch_id, run_benchmark
 from scaldex.schemas import TASKS
 
@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  1. Put AGENTS.md or AGENTS.override.md and any support files in subject/.\n"
             "  2. Run a low-cost smoke test: scaldex --model gpt-5.5\n"
             "  3. Read “What this means” and “What to do now” as the human control layer.\n"
-            "  4. For Codex-assisted follow-up, provide scaldex-run/CODEX_HANDOFF.md and subject/.\n"
+            "  4. For Codex-assisted follow-up, provide scaldex-run/CODEX_HANDOFF.md and the measured subject/ contents.\n"
             "  5. Run --repeats 3 only when the handoff or terminal output tells you to.\n"
             "  6. Replay an existing report without spending money: scaldex --print-result scaldex-run/result.json\n\n"
             "scaldex never stores your Codex API key in generated reports. If CODEX_API_KEY is not already set,\n"
@@ -97,7 +97,7 @@ def validate_output_layout(root: Path, subject_dir: Path, run_dir: Path, history
 
 def reset_run_dir(run_dir: Path, root: Path) -> None:
     if run_dir.exists() and any(run_dir.iterdir()) and not (run_dir / GENERATED_MARKER).exists():
-        raise SystemExit(f"Refusing to replace non-scaldex --run-dir without {GENERATED_MARKER}: {run_dir}")
+        raise SystemExit(f"Refusing to replace non-scaldex --run-dir without {GENERATED_MARKER}: {display_path(str(run_dir))}")
     if run_dir.exists():
         shutil.rmtree(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -142,7 +142,7 @@ def archive_previous_result(run_dir: Path, history_dir: Path) -> Path | None:
             copied.append(name)
     (archive_dir / GENERATED_MARKER).write_text("archived by scaldex\n", encoding="utf-8")
     (archive_dir / "archive.json").write_text(
-        json.dumps({"source_run_dir": str(run_dir), "copied_files": copied}, indent=2, sort_keys=True) + "\n",
+        json.dumps({"source_run_dir": display_path(str(run_dir)), "copied_files": copied}, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     return archive_dir
@@ -218,8 +218,9 @@ def main(argv: list[str] | None = None) -> int:
     subject_dir = (subject_arg if subject_arg.is_absolute() else root / subject_arg).resolve()
     instruction_entry_file = find_instruction_entry_file(subject_dir)
     if instruction_entry_file is None:
-        raise SystemExit(f"Missing required file: {subject_dir / 'AGENTS.md'} or {subject_dir / 'AGENTS.override.md'}")
-    status(f"Subject checked: {subject_dir}")
+        subject_display = display_path(str(subject_dir)) or "subject"
+        raise SystemExit(f"Missing required file: {subject_display}/AGENTS.md or {subject_display}/AGENTS.override.md")
+    status(f"Subject checked: {display_path(str(subject_dir))}")
     agents_file = None
     agents_dir = None
     if args.subject_mode == "package":
@@ -240,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     largest_files = subject_audit.get("largest_files", [])
     if largest_files:
-        top = ", ".join(f"{item['path']} ({human_bytes(item['bytes'])}, {item['bytes']} bytes)" for item in largest_files[:3])
+        top = ", ".join(f"{display_path(str(item['path']))} ({human_bytes(item['bytes'])}, {item['bytes']} bytes)" for item in largest_files[:3])
         status(f"Largest subject files: {top}.")
     warnings = subject_audit.get("warnings", [])
     if warnings:
@@ -271,14 +272,14 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_archive_previous_result:
             archived = archive_previous_result(run_dir, history_dir)
             if archived is not None:
-                status(f"Archived previous compact report: {archived}")
-        status(f"Replacing previous run folder: {run_dir}")
+                status(f"Archived previous compact report: {display_path(str(archived))}")
+        status(f"Replacing previous run folder: {display_path(str(run_dir))}")
     reset_run_dir(run_dir, root)
     if task_ids is None:
         status("Task selection: all tasks.")
     else:
         status(f"Task selection: {', '.join(task_ids)}.")
-    status(f"Creating fixture: {fixture_dir}")
+    status(f"Creating fixture: {display_path(str(fixture_dir))}")
     create_fixture(fixture_dir, force=True)
     status(f"Fixture ready. Planned runs: {planned_runs}")
     started = time.monotonic()
@@ -308,13 +309,18 @@ def main(argv: list[str] | None = None) -> int:
         "repeats": args.repeats,
         "seed": args.seed,
         "subject_mode": args.subject_mode,
-        "subject_dir": str(subject_dir),
+        "subject_dir": display_path(str(subject_dir)),
         "task_ids": task_ids,
     }
-    result["artifacts"]["raw_dir"] = str(raw_dir)
+    artifacts = result.get("artifacts", {})
+    result["artifacts"] = {
+        key: display_path(str(value)) if isinstance(value, str) else value
+        for key, value in artifacts.items()
+    } if isinstance(artifacts, dict) else {}
+    result["artifacts"]["raw_dir"] = display_path(str(raw_dir))
     outputs["result_json"].write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_codex_handoff_markdown(outputs["codex_handoff_md"], result)
-    status(f"Report ready after {round(time.monotonic() - started, 1)}s: {outputs['result_md']}")
+    status(f"Report ready after {round(time.monotonic() - started, 1)}s: {display_path(str(outputs['result_md']))}")
     print_result(result, compare_history_command=history_compare_command(root, run_dir, history_dir) if archived is not None else None, result_dir=run_dir)
     return 0
 

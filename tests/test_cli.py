@@ -212,6 +212,19 @@ class CliTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 main(["bench", "summarize", str(base / "missing-history"), "--out", str(base / "out")])
             self.assertIn("Cannot summarise results: Result input not found", str(ctx.exception))
+            self.assertNotIn(str(base), str(ctx.exception))
+
+    def test_bench_summarize_invalid_json_error_does_not_print_absolute_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            run = base / "run"
+            run.mkdir()
+            (run / "result.json").write_text("{not json\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx:
+                main(["bench", "summarize", str(run), "--out", str(base / "out")])
+            self.assertIn("Cannot summarise results: Invalid result JSON", str(ctx.exception))
+            self.assertIn("result.json", str(ctx.exception))
+            self.assertNotIn(str(base), str(ctx.exception))
 
     def test_result_show_prints_existing_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -243,7 +256,7 @@ class CliTests(unittest.TestCase):
             self.assertIn("What to do now:", text)
             self.assertIn("Codex handoff:", text)
             self.assertIn("- For Codex-assisted follow-up, use:", text)
-            self.assertIn("- Provide with: the measured subject/ package and a clear task.", text)
+            self.assertIn("- Provide with: the measured subject/ contents and a clear task.", text)
             self.assertIn("- Purpose:", text)
             self.assertIn("- Boundary:", text)
             self.assertIn("What was compared", text)
@@ -352,11 +365,42 @@ class CliTests(unittest.TestCase):
                 code, text = self.run_cli_text(["result", "show", "history/result.json"])
             self.assertEqual(code, 0)
             self.assertIn("- For Codex-assisted follow-up, use: history/CODEX_HANDOFF.md", text)
-            self.assertIn("- Provide with: the measured subject/ package and a clear task.", text)
+            self.assertIn("- Provide with: the measured subject/ contents and a clear task.", text)
             self.assertIn("- Human report: history/RESULT.md", text)
             self.assertNotIn(str(local_handoff.resolve()), text)
             self.assertNotIn(str(local_report.resolve()), text)
             self.assertNotIn(str(stale_handoff), text)
+
+    def test_result_show_does_not_print_absolute_paths_outside_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            result = base / "result.json"
+            handoff = base / "CODEX_HANDOFF.md"
+            report = base / "RESULT.md"
+            handoff.write_text("# scaldex codex instruction\n", encoding="utf-8")
+            report.write_text("# scaldex result\n", encoding="utf-8")
+            result.write_text(
+                json.dumps(
+                    {
+                        "verdict": "effective",
+                        "primary_delta": {"agents_minus_control": -10, "percent": -10.0, "agents_median": 90, "control_median": 100},
+                        "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+                        "benchmark_warnings": [],
+                        "final_relevant_files": {"normalized_repo_relative_only": True},
+                        "reliability": {"level": "low", "paired_runs": 1, "warnings": ["low_sample_size"]},
+                        "subject": {"mode": "package", "source_file_count": 1, "total_bytes": 9, "warnings": []},
+                        "decision": {"next_action": "eligible_for_decision_run", "scope": "task", "explanation": "fixture explanation"},
+                        "artifacts": {"codex_handoff_md": str(handoff), "result_md": str(report), "result_json": str(result)},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            code, text = self.run_cli_text(["result", "show", str(result)])
+            self.assertEqual(code, 0)
+            self.assertIn("- For Codex-assisted follow-up, use: CODEX_HANDOFF.md", text)
+            self.assertIn("- Human report: RESULT.md", text)
+            self.assertIn("- Machine report: result.json", text)
+            self.assertNotIn(str(base), text)
 
     def test_result_show_missing_result_exits_cleanly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -365,6 +409,18 @@ class CliTests(unittest.TestCase):
                 main(["result", "show", str(missing)])
             self.assertIn("Missing result file", str(ctx.exception))
             self.assertIn("Run a smoke test to create a result.json", str(ctx.exception))
+            self.assertNotIn(str(Path(tmp)), str(ctx.exception))
+
+    def test_result_show_invalid_json_error_does_not_print_absolute_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            result = base / "result.json"
+            result.write_text("{not json\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx:
+                main(["result", "show", str(result)])
+            self.assertIn("Invalid result JSON", str(ctx.exception))
+            self.assertIn("result.json", str(ctx.exception))
+            self.assertNotIn(str(base), str(ctx.exception))
 
 
 if __name__ == "__main__":

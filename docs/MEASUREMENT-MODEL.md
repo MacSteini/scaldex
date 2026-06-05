@@ -167,6 +167,6 @@ Each run writes:
 - `CODEX_HANDOFF.md`: Codex-facing follow-up brief.
 - `result.json`: machine-readable evidence.
 
-Use `RESULT.md` if you want to inspect the result yourself. Use `CODEX_HANDOFF.md` with the measured `subject/` package if you want Codex-assisted interpretation or package improvement.
+Use `RESULT.md` if you want to inspect the result yourself. Use `CODEX_HANDOFF.md` with the measured contents of `subject/` if you want Codex-assisted interpretation or package improvement.
 
 For the end-to-end improvement loop, read the [Codex instruction workflow](CODEX-INSTRUCTION-WORKFLOW.md).

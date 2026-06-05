@@ -36,7 +36,7 @@ scaldex --model gpt-5.5 --subject-dir subject --task-id login_test_failure --rep
 
 This starts two paid Codex runs: one `control` run and one `agents` run.
 
-After the run, read `What this means` and `What to do now` in the terminal output or in `scaldex-run/RESULT.md`.
+After the run, read `What this means` and `What to do now` in the terminal output. `scaldex-run/RESULT.md` contains the same human-readable interpretation and next-step guidance.
 
 ## Three safe paths after a result
 
@@ -50,7 +50,7 @@ Manual follow-up:
 Codex-assisted follow-up:
 
 - Give Codex `scaldex-run/CODEX_HANDOFF.md`.
-- Give Codex the measured `subject/` package when you want assessment or optimisation.
+- Give Codex the measured contents of your `subject/` folder when you want assessment or optimisation.
 - Tell Codex what it may do and that paid benchmark runs need explicit approval.
 
 Evidence-first follow-up:
@@ -61,16 +61,20 @@ Evidence-first follow-up:
 
 ## Copy-paste prompt for Codex
 
-Use this prompt when you want Codex to act on a scaldex handoff:
+Use this prompt when you want Codex to act on a scaldex handoff. Before sending it, make sure Codex has access to `CODEX_HANDOFF.md` and the measured instruction content from `subject/`. You can provide that content as files in the same workspace, as attachments, or by pasting the relevant files.
+
+The prompt allows Codex to explain the result and propose evidence-linked changes. It does not approve paid benchmark runs. Codex may run scaldex commands or recommend a paid rerun only when the handoff supports that step and you explicitly approve the paid run.
 
 ```text
-I use a CLI tool called scaldex to measure whether my Codex instruction package saves non-cached input tokens without degrading task quality. The package contains an AGENTS.md or AGENTS.override.md entry file and may include optional support files or folders.
+I use a CLI tool called scaldex to measure whether my Codex instruction package saves non-cached input tokens without degrading task quality.
 
-I will provide CODEX_HANDOFF.md and the measured subject/ package. The subject/ package contains the instruction entry file and any support files or folders that were measured.
+You have access to CODEX_HANDOFF.md and the measured contents of my subject/ folder.
+
+The measured instruction package uses either AGENTS.md or AGENTS.override.md as its entry file. Support files or folders are part of the package only when the entry file references them.
 
 The file CODEX_HANDOFF.md contains scaldex’s benchmark summary, requested action, allowed actions, forbidden actions, quality gates and evidence grade from my latest run.
 
-Please read both CODEX_HANDOFF.md and the measured subject/ package before assessing or changing the instruction package.
+Please read both CODEX_HANDOFF.md and the measured subject/ contents before assessing or changing the instruction package.
 
 First, state whether the result is smoke or decision-grade evidence. Then state the requested action from the handoff and any blockers.
 

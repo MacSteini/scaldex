@@ -29,15 +29,15 @@ def format_percent(value: object) -> str:
 def load_result_json(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise SystemExit(
-            f"Missing result file: {path}\n"
+            f"Missing result file: {display_path(str(path))}\n"
             "Run a smoke test to create a result.json, or pass the exact result.json file you want to replay."
         )
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"Invalid result JSON: {path}: {exc.msg}") from exc
+        raise SystemExit(f"Invalid result JSON: {display_path(str(path))}: {exc.msg}") from exc
     if not isinstance(payload, dict):
-        raise SystemExit(f"Invalid result JSON: expected object in {path}")
+        raise SystemExit(f"Invalid result JSON: expected object in {display_path(str(path))}")
     return payload
 
 
@@ -76,7 +76,7 @@ def display_path(path: str | None) -> str | None:
     try:
         return str(candidate.relative_to(Path.cwd()))
     except ValueError:
-        return str(candidate)
+        return candidate.name
 
 
 def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
@@ -86,10 +86,10 @@ def what_to_do_now(decision: dict[str, Any], *, synthetic: bool = False) -> str:
     scope = decision.get("scope", "task")
     if next_action == "eligible_for_decision_run":
         if scope == "result_set":
-            return "Run the same task set with --repeats 3 before trusting the result; for Codex-assisted follow-up, provide the handoff file and measured package."
-        return "Run this same task with --repeats 3 before trusting the result; for Codex-assisted follow-up, provide the handoff file and measured package."
+            return "Run the same task set with --repeats 3 before trusting the result; for Codex-assisted follow-up, provide the handoff file and measured subject contents."
+        return "Run this same task with --repeats 3 before trusting the result; for Codex-assisted follow-up, provide the handoff file and measured subject contents."
     if next_action == "stop_fix_quality_or_task_behavior":
-        return "Stop before spending more money. Inspect the listed blockers yourself, or provide the handoff file and measured package for Codex-assisted follow-up."
+        return "Stop before spending more money. Inspect the listed blockers yourself, or provide the handoff file and measured subject contents for Codex-assisted follow-up."
     if next_action == "record_decision_grade_win":
         if scope == "result_set":
             return "Keep this evidence and check global claim eligibility; the handoff can help Codex compare reports safely."
@@ -265,7 +265,7 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     print("Codex handoff")
     if codex_handoff:
         print(f"- For Codex-assisted follow-up, use: {display_path(codex_handoff)}")
-        print("- Provide with: the measured subject/ package and a clear task.")
+        print("- Provide with: the measured subject/ contents and a clear task.")
     else:
         print("- Codex-assisted follow-up file was not found beside this result.")
     print(f"- Purpose: {handoff_purpose(decision)}")

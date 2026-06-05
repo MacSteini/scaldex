@@ -176,6 +176,18 @@ def load_json_checked(path: Path, default: Any) -> tuple[Any, bool]:
         return default, False
 
 
+def display_path(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        return "n/a"
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        return value
+    try:
+        return str(candidate.relative_to(Path.cwd()))
+    except ValueError:
+        return candidate.name
+
+
 def final_relevant_files(final: Any) -> tuple[list[str], bool]:
     if not isinstance(final, dict):
         return [], False
@@ -758,6 +770,7 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
     for item in largest_files:
         if isinstance(item, dict):
             readable = dict(item)
+            readable["path"] = display_path(readable.get("path"))
             readable["size"] = human_bytes(readable.get("bytes", 0))
             readable_largest_files.append(readable)
 
@@ -938,13 +951,18 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
     integrity = result.get("integrity", {})
     tool_sanity = result.get("tool_sanity", {})
     artifacts = result.get("artifacts", {})
-    raw_results_dir = artifacts.get("raw_results_dir", "raw/") if isinstance(artifacts, dict) else "raw/"
+    raw_results_dir = display_path(artifacts.get("raw_results_dir", "raw/") if isinstance(artifacts, dict) else "raw/")
+    codex_handoff_path = artifacts.get("codex_handoff_md", "CODEX_HANDOFF.md") if isinstance(artifacts, dict) else "CODEX_HANDOFF.md"
+    if isinstance(codex_handoff_path, str) and codex_handoff_path:
+        codex_handoff_display = Path(codex_handoff_path).name if Path(codex_handoff_path).is_absolute() else codex_handoff_path
+    else:
+        codex_handoff_display = "CODEX_HANDOFF.md"
     lines = [
         "# scaldex result",
         "",
         f"Verdict: **{result['verdict']}**",
         "",
-        f"For Codex-assisted follow-up, use `{artifacts.get('codex_handoff_md', 'CODEX_HANDOFF.md') if isinstance(artifacts, dict) else 'CODEX_HANDOFF.md'}` together with the measured `subject/` package and a clear task.",
+        f"For Codex-assisted follow-up, use `{codex_handoff_display}` together with the measured contents of `subject/` and a clear task.",
         "",
         "## Decision Summary",
         "",
@@ -1021,10 +1039,10 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         lines.append(f"- Normalized repo-relative only: {final_relevant.get('normalized_repo_relative_only', False)}")
         non_relative_paths = final_relevant.get("non_repo_relative_paths", [])
         if non_relative_paths:
-            lines.extend(f"- Non-repo-relative path after normalisation: `{path}`" for path in non_relative_paths)
+            lines.append(f"- Non-repo-relative paths after normalisation: {format_number(len(non_relative_paths))}; omitted to avoid leaking local workspace paths.")
         raw_non_relative_paths = final_relevant.get("raw_non_repo_relative_paths", [])
         if raw_non_relative_paths:
-            lines.extend(f"- Raw non-repo-relative path: `{path}`" for path in raw_non_relative_paths)
+            lines.append(f"- Raw non-repo-relative paths: {format_number(len(raw_non_relative_paths))}; omitted to avoid leaking local workspace paths.")
         missing_expected_paths = final_relevant.get("missing_expected_paths", [])
         if missing_expected_paths:
             lines.extend(f"- Missing expected relevant file: `{path}`" for path in missing_expected_paths)
@@ -1053,7 +1071,7 @@ def write_result_markdown(path: Path, result: dict[str, Any]) -> None:
         largest_files = subject.get("largest_files", [])
         if largest_files:
             lines.extend(["", "Largest subject files:", ""])
-            lines.extend(f"- `{item.get('path')}`: {human_bytes(item.get('bytes', 0))} ({format_number(item.get('bytes', 0))} bytes)" for item in largest_files[:5] if isinstance(item, dict))
+            lines.extend(f"- `{display_path(item.get('path'))}`: {human_bytes(item.get('bytes', 0))} ({format_number(item.get('bytes', 0))} bytes)" for item in largest_files[:5] if isinstance(item, dict))
     lines.extend(["", "## Isolation", ""])
     if isinstance(isolation, dict):
         lines.append(f"- Isolated per-run `CODEX_HOME`: {isolation.get('isolated_codex_home', False)}")
@@ -1115,7 +1133,7 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         "",
         "User goal: improve the measured instruction package only when evidence supports it.",
         "",
-        "Required input: use this handoff together with the measured `subject/` package supplied by the user. Do not assess or change instructions from the handoff alone.",
+        "Required input: use this handoff together with the measured contents of `subject/` supplied by the user. Do not assess or change instructions from the handoff alone.",
         "",
         "Your job: follow the requested action below without making unsupported efficiency claims.",
         "",
@@ -1153,7 +1171,7 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         f"- Repo-relative relevant_files only: `{final_relevant.get('repo_relative_only', False) if isinstance(final_relevant, dict) else False}`",
         f"- Normalized repo-relative relevant_files only: `{final_relevant.get('normalized_repo_relative_only', False) if isinstance(final_relevant, dict) else False}`",
         f"- Raw non-repo-relative paths before normalisation: `{len(raw_paths)} path(s); omitted from this handoff to avoid leaking local workspace paths`",
-        f"- Non-repo-relative paths after normalisation: `{format_warning_list(non_relative_paths)}`",
+        f"- Non-repo-relative paths after normalisation: `{len(non_relative_paths)} path(s); omitted from this handoff to avoid leaking local workspace paths`",
         f"- Missing expected relevant files: `{format_warning_list(missing_paths)}`",
         "",
         "## Run Identity",
@@ -1166,7 +1184,7 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         "## Allowed Actions",
         "",
         "- Explain this measurement using the primary metric and quality gates above.",
-        "- Ask the user for the measured `subject/` package if it was not provided.",
+        "- Ask the user for the measured contents of `subject/` if they were not provided.",
         "- Inspect the measured instruction package supplied by the user before proposing changes.",
         "- Propose minimal instruction-package changes only when the requested action permits optimisation work.",
         "- Ask the user before running additional paid benchmarks.",
@@ -1183,7 +1201,7 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         "- This handoff file.",
         "- `RESULT.md` for the human-readable report.",
         "- `result.json` for machine-readable evidence.",
-        "- The measured `subject/` package supplied by the user.",
+        "- The measured contents of `subject/` supplied by the user.",
         "",
         "## Output Expected From Codex",
         "",
@@ -1223,13 +1241,13 @@ def analyze_results(results: Path, large_text_bytes: int = LARGE_TEXT_BYTES, out
     else:
         deltas_csv.write_text("", encoding="utf-8")
     result["artifacts"] = {
-        "result_json": str(result_json),
-        "result_md": str(result_md),
-        "summary_csv": str(summary_csv),
-        "summary_json": str(summary_json),
-        "paired_deltas_csv": str(deltas_csv),
-        "raw_results_dir": str(results),
-        "codex_handoff_md": str(codex_handoff_md),
+        "result_json": result_json.name,
+        "result_md": result_md.name,
+        "summary_csv": summary_csv.name,
+        "summary_json": summary_json.name,
+        "paired_deltas_csv": deltas_csv.name,
+        "raw_results_dir": display_path(str(results)),
+        "codex_handoff_md": codex_handoff_md.name,
     }
     result_json.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_result_markdown(result_md, result)

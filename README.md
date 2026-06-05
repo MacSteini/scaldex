@@ -57,6 +57,24 @@ python3 run_scaldex.py --help
 
 The examples below use the installed `scaldex` command. With the wrapper, replace `scaldex` with `python3 run_scaldex.py`.
 
+## Update from GitHub source
+
+For a Git checkout, run `git pull` in the scaldex source folder. For a downloaded archive, replace the old source folder with the new one.
+
+If you installed the `scaldex` command, run this again in the updated folder:
+
+```sh
+python3 -m pip install -e .
+```
+
+Editable installs read code from the source folder, but reinstalling keeps command entry points, package metadata and dependencies aligned. If the source folder moved to a new path, reinstall from the new folder.
+
+If you only use the wrapper, update or replace the source folder and run this no-cost check from the updated folder:
+
+```sh
+python3 run_scaldex.py --help
+```
+
 ## First measurement
 
 Create a `subject/` folder for the instruction package you want to measure:
@@ -79,7 +97,7 @@ scaldex --model gpt-5.5 --subject-dir subject --task-id login_test_failure --rep
 
 This starts two paid Codex runs: one `control` run and one `agents` run.
 
-After the run, read `What this means` and `What to do now` in the terminal output or in `scaldex-run/RESULT.md`.
+After the run, read `What this means` and `What to do now` in the terminal output. `scaldex-run/RESULT.md` contains the same human-readable interpretation and next-step guidance.
 
 The run folder contains:
 
@@ -92,10 +110,10 @@ The run folder contains:
 You have three safe paths:
 
 - read `RESULT.md` and improve the instruction package manually
-- give `CODEX_HANDOFF.md` and the measured `subject/` content to Codex with a clear optimisation request
+- give `CODEX_HANDOFF.md` and the measured contents of `subject/` to Codex with a clear optimisation request
 - stop changing the package and collect stronger decision-grade evidence when scaldex tells you to
 
-`CODEX_HANDOFF.md` is a brief, not a self-contained request. If you want Codex-assisted follow-up, give Codex the handoff, the measured `subject/` content and an explicit task. The [Codex instruction workflow guide](docs/CODEX-INSTRUCTION-WORKFLOW.md) includes a copy-paste prompt.
+`CODEX_HANDOFF.md` is a brief, not a self-contained request. If you want Codex-assisted follow-up, give Codex the handoff, the measured contents of `subject/` and an explicit task. The [Codex instruction workflow guide](docs/CODEX-INSTRUCTION-WORKFLOW.md) includes a copy-paste prompt.
 
 Do not improve the measured package from a smoke win alone. Smoke evidence only tells you whether a decision-grade run is worth the cost.
 

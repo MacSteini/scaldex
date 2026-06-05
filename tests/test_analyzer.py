@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scaldex.analyzer import analyze_results, build_result, decision_summary, human_bytes, paired_deltas, parse_run, write_codex_handoff_markdown
+from scaldex.analyzer import analyze_results, build_result, decision_summary, human_bytes, paired_deltas, parse_run, write_codex_handoff_markdown, write_result_markdown
 
 
 def write_run(
@@ -23,6 +23,7 @@ def write_run(
     expected_run_count: int = 2,
     relevant_files: list[str] | None = None,
     workdir: Path | None = None,
+    largest_file_path: str = ".codex/instructions.md",
 ) -> None:
     run = base / run_id
     run.mkdir()
@@ -63,7 +64,7 @@ def write_run(
             "file_count": 3,
             "total_bytes": 40000,
             "fingerprint": subject_fingerprint,
-            "largest_files": [{"path": ".codex/instructions.md", "bytes": 30000}],
+            "largest_files": [{"path": largest_file_path, "bytes": 30000}],
             "warnings": ["large_subject"] if variant == "agents" else [],
         },
         "run_isolation": {
@@ -123,6 +124,7 @@ class AnalyzerTests(unittest.TestCase):
                     "final_relevant_files": {
                         "repo_relative_only": False,
                         "normalized_repo_relative_only": True,
+                        "non_repo_relative_paths": ["/private/tmp/workspace/repo/services/auth/src/login.ts"],
                         "raw_non_repo_relative_paths": ["/private/tmp/workspace/repo/services/auth/src/login.ts"],
                     },
                     "decision": {
@@ -146,7 +148,7 @@ class AnalyzerTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("# scaldex codex instruction", text)
                 self.assertIn("Role: You are Codex analysing a scaldex benchmark result.", text)
-                self.assertIn("Required input: use this handoff together with the measured `subject/` package", text)
+                self.assertIn("Required input: use this handoff together with the measured contents of `subject/`", text)
                 self.assertIn("## Requested Action", text)
                 self.assertIn(requested, text)
                 self.assertIn("## Primary Metric", text)
@@ -154,6 +156,7 @@ class AnalyzerTests(unittest.TestCase):
                 self.assertIn("variant medians are secondary context only", text)
                 self.assertIn("## Quality Gates", text)
                 self.assertIn("Raw non-repo-relative paths before normalisation: `1 path(s); omitted from this handoff to avoid leaking local workspace paths`", text)
+                self.assertIn("Non-repo-relative paths after normalisation: `1 path(s); omitted from this handoff to avoid leaking local workspace paths`", text)
                 self.assertNotIn("/private/tmp/workspace", text)
                 self.assertIn("## Allowed Actions", text)
                 self.assertIn("## Forbidden Actions", text)
@@ -208,6 +211,10 @@ class AnalyzerTests(unittest.TestCase):
             self.assertFalse(result["decision"]["uses_unpaired_variant_medians_for_decision"])
             self.assertEqual(result["tool_sanity"]["schema_version"], 1)
             self.assertTrue(result["tool_sanity"]["aggregated_command_output_counted"])
+            self.assertEqual(result["artifacts"]["result_json"], "result.json")
+            self.assertEqual(result["artifacts"]["result_md"], "RESULT.md")
+            self.assertEqual(result["artifacts"]["codex_handoff_md"], "CODEX_HANDOFF.md")
+            self.assertNotIn(str(base), json.dumps(result))
             self.assertTrue(result["final_relevant_files"]["repo_relative_only"])
             self.assertEqual(result["integrity"]["status"], "ok")
             self.assertEqual(result["integrity"]["batch_id"], "batch-test")
@@ -237,10 +244,12 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("Aggregated command output counted: True", result_md)
             handoff_md = paths["codex_handoff_md"].read_text(encoding="utf-8")
             self.assertIn("# scaldex codex instruction", handoff_md)
-            self.assertIn("For Codex-assisted follow-up, use `", result_md)
-            self.assertIn("` together with the measured `subject/` package and a clear task.", result_md)
+            self.assertIn("For Codex-assisted follow-up, use `CODEX_HANDOFF.md`", result_md)
+            self.assertNotIn(str(paths["codex_handoff_md"].resolve()), result_md)
+            self.assertNotIn(str(paths["result_md"].parent.resolve()), result_md)
+            self.assertIn("` together with the measured contents of `subject/` and a clear task.", result_md)
             self.assertIn("Role: You are Codex analysing a scaldex benchmark result.", handoff_md)
-            self.assertIn("Required input: use this handoff together with the measured `subject/` package", handoff_md)
+            self.assertIn("Required input: use this handoff together with the measured contents of `subject/`", handoff_md)
             self.assertIn("## Requested Action", handoff_md)
             self.assertIn("## Decision Status", handoff_md)
             self.assertIn("- Next action code: `eligible_for_decision_run`", handoff_md)
@@ -252,7 +261,7 @@ class AnalyzerTests(unittest.TestCase):
             self.assertIn("## Quality Gates", handoff_md)
             self.assertIn("- Quality gate: `passed`", handoff_md)
             self.assertIn("## Allowed Actions", handoff_md)
-            self.assertIn("Ask the user for the measured `subject/` package if it was not provided.", handoff_md)
+            self.assertIn("Ask the user for the measured contents of `subject/` if they were not provided.", handoff_md)
             self.assertIn("## Forbidden Actions", handoff_md)
             self.assertIn("Do not optimise the instruction package yet", handoff_md)
             self.assertIn("## Files To Inspect Next", handoff_md)
@@ -260,6 +269,62 @@ class AnalyzerTests(unittest.TestCase):
             rows = [parse_run(base / "control"), parse_run(base / "agents")]
             deltas = paired_deltas(rows)
             self.assertEqual(deltas[0]["delta_non_cached_input_tokens_agents_minus_control"], -300)
+
+    def test_analyze_results_sanitizes_subject_largest_files_in_result_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            largest = "/private/tmp/workspace/subject/.codex/instructions.md"
+            write_run(base, "control", "control", 1000, largest_file_path=largest)
+            write_run(base, "agents", "agents", 700, largest_file_path=largest)
+            paths = analyze_results(base)
+            result = json.loads(paths["result_json"].read_text(encoding="utf-8"))
+            self.assertEqual(result["subject"]["largest_files"][0]["path"], "instructions.md")
+            self.assertNotIn("/private/tmp/workspace", json.dumps(result))
+
+    def test_result_markdown_omits_absolute_local_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            path = base / "RESULT.md"
+            result = {
+                "verdict": "effective",
+                "primary_delta": {"agents_minus_control": -10, "percent": -10.0, "agents_median": 90, "control_median": 100},
+                "quality": {"agents_success_rate": 1.0, "control_success_rate": 1.0},
+                "secondary": {
+                    "total_observed_tokens_delta": 0,
+                    "wall_seconds_delta": 0,
+                    "stdout_bytes_delta": 0,
+                    "stderr_bytes_delta": 0,
+                    "large_text_events_over_20kb_delta": 0,
+                    "command_count_delta": 0,
+                    "first_expected_file_event_index_delta": 0,
+                },
+                "final_relevant_files": {
+                    "repo_relative_only": False,
+                    "normalized_repo_relative_only": False,
+                    "non_repo_relative_paths": ["/private/tmp/workspace/repo/services/auth/src/login.ts"],
+                    "raw_non_repo_relative_paths": ["/private/tmp/workspace/repo/services/auth/src/login.ts"],
+                },
+                "decision": {"next_action": "eligible_for_decision_run", "quality_gate_passed": True},
+                "benchmark_warnings": [],
+                "warnings": [],
+                "reliability": {},
+                "integrity": {},
+                "subject": {"largest_files": [{"path": "/private/tmp/workspace/subject/.codex/instructions.md", "bytes": 1234}]},
+                "isolation": {},
+                "tool_sanity": {},
+                "artifacts": {
+                    "codex_handoff_md": str(base / "CODEX_HANDOFF.md"),
+                    "raw_results_dir": str(base / "raw" / "results"),
+                },
+            }
+            write_result_markdown(path, result)
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("For Codex-assisted follow-up, use `CODEX_HANDOFF.md`", text)
+            self.assertIn("Non-repo-relative paths after normalisation: 1; omitted to avoid leaking local workspace paths.", text)
+            self.assertIn("Raw non-repo-relative paths: 1; omitted to avoid leaking local workspace paths.", text)
+            self.assertIn("`instructions.md`: 1.2 KiB (1,234 bytes)", text)
+            self.assertNotIn("/private/tmp/workspace", text)
+            self.assertNotIn(str(base), text)
 
     def test_parse_run_reports_analysis_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

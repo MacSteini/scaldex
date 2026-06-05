@@ -17,9 +17,9 @@ def load_result_json(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid result JSON: {path}") from exc
+        raise ValueError(f"Invalid result JSON: {display_path(path)}") from exc
     if not isinstance(value, dict):
-        raise ValueError(f"Result JSON must be an object: {path}")
+        raise ValueError(f"Result JSON must be an object: {display_path(path)}")
     return value
 
 
@@ -31,7 +31,7 @@ def discover_result_jsons(inputs: list[Path]) -> list[Path]:
         elif item.is_dir():
             paths.extend(sorted(item.rglob("result.json")))
         else:
-            raise FileNotFoundError(f"Result input not found: {item}")
+            raise FileNotFoundError(f"Result input not found: {display_path(item)}")
     unique = sorted({path.resolve() for path in paths})
     if not unique:
         raise FileNotFoundError("No result.json files found")
@@ -105,7 +105,7 @@ def result_row(path: Path, result: dict[str, Any], *, task_id: str | None = None
         decision_grade = paired_runs >= 3
     result_task_count = len(result_task_ids(result))
     return {
-        "source": str(path),
+        "source": display_path(path),
         "task_id": task_id or task_id_for_result(result),
         "verdict": result.get("verdict", "unknown"),
         "decision_grade": decision_grade,
@@ -284,6 +284,15 @@ def report_type_text(summary: dict[str, Any]) -> str:
     return "developer/CI synthetic fixture" if "synthetic_results_only" in summary.get("warnings", []) else "real benchmark reports"
 
 
+def display_path(path: Path) -> str:
+    if not path.is_absolute():
+        return str(path)
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return path.name
+
+
 def format_multi_summary_console(summary: dict[str, Any], paths: dict[str, Path] | None = None) -> str:
     lines = [
         "",
@@ -306,8 +315,8 @@ def format_multi_summary_console(summary: dict[str, Any], paths: dict[str, Path]
         lines.extend(
             [
                 "",
-                f"Human summary: {paths['summary_md']}",
-                f"Machine summary: {paths['summary_json']}",
+                f"Human summary: {display_path(paths['summary_md'])}",
+                f"Machine summary: {display_path(paths['summary_json'])}",
             ]
         )
     lines.append("")

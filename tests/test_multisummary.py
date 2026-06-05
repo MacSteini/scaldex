@@ -228,6 +228,8 @@ class MultiSummaryTests(unittest.TestCase):
             self.assertTrue(outputs["summary_md"].exists())
             payload = json.loads(outputs["summary_json"].read_text(encoding="utf-8"))
             self.assertEqual(payload["tasks"][0]["task_id"], "login_test_failure")
+            self.assertEqual(payload["tasks"][0]["source"], "result.json")
+            self.assertNotIn(str(base), json.dumps(payload))
             report = outputs["summary_md"].read_text(encoding="utf-8")
             self.assertIn("# scaldex multi-task summary", report)
             self.assertIn("Can claim global efficiency:", report)
@@ -250,6 +252,20 @@ class MultiSummaryTests(unittest.TestCase):
             self.assertIn("developer/CI synthetic fixture", text)
             self.assertIn("not to claim real token efficiency", text)
             self.assertIn("What to do now:", text)
+
+    def test_format_multi_summary_console_does_not_print_absolute_output_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            result_path = base / "run" / "result.json"
+            write_result(result_path, "login_test_failure")
+            summary = build_multi_summary([result_path])
+            text = format_multi_summary_console(
+                summary,
+                {"summary_md": base / "out" / "SCALDEX_SUMMARY.md", "summary_json": base / "out" / "scaldex-summary.json"},
+            )
+            self.assertIn("Human summary: SCALDEX_SUMMARY.md", text)
+            self.assertIn("Machine summary: scaldex-summary.json", text)
+            self.assertNotIn(str(base), text)
 
 
 if __name__ == "__main__":
