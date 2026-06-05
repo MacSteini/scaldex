@@ -15,7 +15,7 @@
 
 scaldex measures whether a Codex instruction package saves or costs tokens without visibly degrading task quality.
 
-Use it when you optimise `AGENTS.md`, `AGENTS.override.md`, `.codex/` support files or another Codex instruction setup and want evidence before changing it further. scaldex gives you a task-level result that you can inspect yourself or hand to Codex for evidence-based follow-up.
+Use it when you optimise `AGENTS.md`, `AGENTS.override.md` or support files and folders referenced by those instructions. scaldex gives you a task-level result that you can inspect yourself or hand to Codex for evidence-based follow-up.
 
 scaldex runs each benchmark task in two isolated variants:
 
@@ -64,10 +64,12 @@ Create a `subject/` folder for the instruction package you want to measure:
 ```text
 subject/
   AGENTS.md
-  .codex/
+  xyz/
 ```
 
-`subject/` is the package under test. Keep it separate from the scaldex project folder. You may use `AGENTS.override.md` instead of `AGENTS.md`, and you may add any support files your Codex setup relies on.
+`subject/` is the package under test. Keep it separate from the scaldex project folder. It must contain `AGENTS.md` or `AGENTS.override.md`.
+
+Support files and folders are optional. You can use names such as `.codex/`, `xyz/` or anything else your instruction entry file references.
 
 Run one smoke benchmark first:
 

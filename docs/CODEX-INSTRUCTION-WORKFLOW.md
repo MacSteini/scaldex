@@ -6,7 +6,7 @@ This guide explains how scaldex fits into the workflow for improving Codex instr
 
 Codex instruction files can help, stay neutral or make work more expensive.
 
-An `AGENTS.md`, `AGENTS.override.md` or `.codex/` package may reduce tool use by telling Codex where to look and when to stop. The same package may also cost tokens if it adds too much context, points Codex at the wrong files or gives rules that do not match the task.
+An `AGENTS.md` or `AGENTS.override.md` entry file may reduce tool use by telling Codex where to look and when to stop. It can also refer to support files or folders. The measured package may cost tokens if the entry file or support material adds too much context, points Codex at the wrong files or gives rules that do not match the task.
 
 scaldex measures that trade-off. It does not decide whether your instructions are generally good. It checks whether the measured package helps Codex complete controlled task workflows with fewer non-cached input tokens and clean quality gates.
 
@@ -21,10 +21,10 @@ The measured package lives in `subject/`:
 ```text
 subject/
   AGENTS.md
-  .codex/
+  xyz/
 ```
 
-Use `AGENTS.override.md` instead of `AGENTS.md` if that is your intended instruction entry point. Add any support files your Codex setup relies on. Keep generated scaldex report folders outside `subject/`.
+Use `AGENTS.override.md` instead of `AGENTS.md` if that is your intended instruction entry point. Support files and folders are optional. You can use names such as `.codex/`, `xyz/` or anything else your entry file references. Keep generated scaldex report folders outside `subject/`.
 
 ## First measurement loop
 
@@ -64,7 +64,7 @@ Evidence-first follow-up:
 Use this prompt when you want Codex to act on a scaldex handoff:
 
 ```text
-I use a CLI tool called scaldex to measure whether my Codex instruction package saves non-cached input tokens without degrading task quality.
+I use a CLI tool called scaldex to measure whether my Codex instruction package saves non-cached input tokens without degrading task quality. The package contains an AGENTS.md or AGENTS.override.md entry file and may include optional support files or folders.
 
 The file CODEX_HANDOFF.md contains scaldex's benchmark summary, requested action, allowed actions, forbidden actions, quality gates and evidence grade from my latest run.
 
