@@ -123,7 +123,7 @@ Expected signals:
 
 - `docs/API-EXPORT.md`
 - `packages/export-cli/src/commands/export.ts`
-- relevant terms such as `exportFormat`, `fixture-export` and `--format`
+- relevant export-command terms such as `exportFormat` and `--format`
 
 Use this task when you want to test whether your package finds the right documentation and code context before proposing docs work.
 

@@ -24,7 +24,15 @@ subject/
   xyz/
 ```
 
-Use `AGENTS.override.md` instead of `AGENTS.md` if that is your intended instruction entry point. Support files and folders are optional. You can use names such as `.codex/`, `xyz/` or anything else your entry file references. Keep generated scaldex report folders outside `subject/`.
+Use `AGENTS.override.md` instead of `AGENTS.md` if that is your intended instruction entry point. Support files and folders are optional. You can use names such as `.codex/`, `.codex-project/`, `xyz/` or anything else your entry file references. Keep generated scaldex report folders outside `subject/`.
+
+Inspect the package before the first paid benchmark:
+
+```sh
+scaldex bench inspect-subject --subject-dir subject
+```
+
+The default mode inspects the whole package. Use `--subject-mode agents-md` only when you want to isolate the entry file and leave support material out of the measurement.
 
 ## First measurement loop
 

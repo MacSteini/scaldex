@@ -92,14 +92,45 @@ class RunnerVariantTests(unittest.TestCase):
             workdir = base / "work"
             subject = base / "subject"
             (subject / ".codex").mkdir(parents=True)
+            (subject / ".codex-project" / "notes").mkdir(parents=True)
+            (subject / "xyz").mkdir(parents=True)
             (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
             (subject / "AGENTS.override.md").write_text("# Override\n", encoding="utf-8")
             (subject / ".codex" / "instructions.md").write_text("# Support\n", encoding="utf-8")
+            (subject / ".codex-project" / "notes" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+            (subject / "xyz" / "rules.md").write_text("# Rules\n", encoding="utf-8")
             copy_fixture(fixture, workdir)
             install_agents_dir(workdir, subject)
             self.assertEqual((workdir / "AGENTS.md").read_text(encoding="utf-8"), "# Agents\n")
             self.assertEqual((workdir / "AGENTS.override.md").read_text(encoding="utf-8"), "# Override\n")
             self.assertTrue((workdir / ".codex" / "instructions.md").exists())
+            self.assertTrue((workdir / ".codex-project" / "notes" / "guide.md").exists())
+            self.assertTrue((workdir / "xyz" / "rules.md").exists())
+
+    def test_agents_dir_install_ignores_local_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fixture = create_fixture(base / "fixture")
+            workdir = base / "work"
+            subject = base / "subject"
+            (subject / "__pycache__").mkdir(parents=True)
+            (subject / "support" / "__pycache__").mkdir(parents=True)
+            (subject / "support").mkdir(exist_ok=True)
+            (subject / ".git").mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            (subject / ".DS_Store").write_text("noise\n", encoding="utf-8")
+            (subject / "__pycache__" / "cache.pyc").write_text("noise\n", encoding="utf-8")
+            (subject / "support" / ".DS_Store").write_text("noise\n", encoding="utf-8")
+            (subject / "support" / "__pycache__" / "cache.pyc").write_text("noise\n", encoding="utf-8")
+            (subject / "support" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+            copy_fixture(fixture, workdir)
+            install_agents_dir(workdir, subject)
+            self.assertTrue((workdir / "support" / "guide.md").exists())
+            self.assertFalse((workdir / ".DS_Store").exists())
+            self.assertFalse((workdir / ".git").exists())
+            self.assertFalse((workdir / "__pycache__").exists())
+            self.assertFalse((workdir / "support" / ".DS_Store").exists())
+            self.assertFalse((workdir / "support" / "__pycache__").exists())
 
     def test_subject_audit_rejects_file_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -317,6 +348,8 @@ class RunnerVariantTests(unittest.TestCase):
             self.assertEqual({item["batch_id"] for item in seen}, {"batch-fixed"})
             self.assertEqual({item["run_config_fingerprint"] for item in seen}, {seen[0]["run_config_fingerprint"]})
             self.assertEqual(seen[0]["run_config"]["expected_run_count"], 4)
+            self.assertEqual(seen[0]["run_config"]["workspace_commit"], "abc")
+            self.assertNotIn("fixture_commit", seen[0]["run_config"])
 
     def test_synthesize_benchmark_creates_complete_paired_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -331,6 +364,8 @@ class RunnerVariantTests(unittest.TestCase):
             second_meta = json.loads(next(second_out.glob("*/meta.json")).read_text(encoding="utf-8"))
             self.assertEqual(first_meta["batch_id"], second_meta["batch_id"])
             self.assertEqual(first_meta["run_config_fingerprint"], second_meta["run_config_fingerprint"])
+            self.assertEqual(first_meta["workspace_commit"], "synthetic")
+            self.assertNotIn("fixture_commit", first_meta)
 
     def test_run_one_records_cleanup_default_and_keep(self) -> None:
         class FakeResult:

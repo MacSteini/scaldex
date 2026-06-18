@@ -13,7 +13,7 @@ from pathlib import Path
 from scaldex.fixture import create_fixture
 from scaldex.analyzer import TOOL_SANITY, explain_warning, human_bytes, write_codex_handoff_markdown
 from scaldex.result_console import display_path, load_result_json, print_result
-from scaldex.runner import GENERATED_MARKER, audit_subject_source, find_instruction_entry_file, new_batch_id, run_benchmark
+from scaldex.runner import GENERATED_MARKER, audit_subject_source, find_instruction_entry_file, new_batch_id, reject_subject_symlink_path, run_benchmark
 from scaldex.schemas import TASKS
 
 
@@ -28,11 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Typical flow:\n"
             "  1. Put AGENTS.md or AGENTS.override.md and any support files in subject/.\n"
-            "  2. Run a low-cost smoke test: scaldex --model gpt-5.5\n"
-            "  3. Read “What this means” and “What to do now” as the human control layer.\n"
-            "  4. For Codex-assisted follow-up, provide scaldex-run/CODEX_HANDOFF.md and the measured subject/ contents.\n"
-            "  5. Run --repeats 3 only when the handoff or terminal output tells you to.\n"
-            "  6. Replay an existing report without spending money: scaldex --print-result scaldex-run/result.json\n\n"
+            "  2. Inspect the package without spending money: scaldex bench inspect-subject --subject-dir subject\n"
+            "  3. Run a low-cost smoke test: scaldex --model gpt-5.5\n"
+            "  4. Read “What this means” and “What to do now” as the human control layer.\n"
+            "  5. For Codex-assisted follow-up, provide scaldex-run/CODEX_HANDOFF.md and the measured subject/ contents.\n"
+            "  6. Run --repeats 3 only when the handoff or terminal output tells you to.\n"
+            "  7. Replay an existing report without spending money: scaldex --print-result scaldex-run/result.json\n\n"
             "scaldex never stores your Codex API key in generated reports. If CODEX_API_KEY is not already set,\n"
             "the tool asks for it at a hidden prompt for each paid command."
         ),
@@ -56,6 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def status(message: str) -> None:
     print(f"[scaldex] {message}", file=sys.stderr, flush=True)
+
+
+def display_input_path(raw: Path, resolved: Path) -> str:
+    if not raw.is_absolute():
+        return str(raw)
+    return display_path(str(resolved)) or str(raw)
 
 
 def ensure_api_key() -> str:
@@ -215,12 +222,18 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("Use either --all-tasks or --task-id, not both.")
     root = Path.cwd().resolve()
     subject_arg = args.subject_dir.expanduser()
+    subject_guard_path = subject_arg if subject_arg.is_absolute() else root / subject_arg
+    subject_guard_display = display_input_path(subject_arg, subject_guard_path)
+    try:
+        reject_subject_symlink_path(subject_guard_path, subject_guard_display)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     subject_dir = (subject_arg if subject_arg.is_absolute() else root / subject_arg).resolve()
     instruction_entry_file = find_instruction_entry_file(subject_dir)
+    subject_display = display_input_path(subject_arg, subject_dir)
     if instruction_entry_file is None:
-        subject_display = display_path(str(subject_dir)) or "subject"
         raise SystemExit(f"Missing required file: {subject_display}/AGENTS.md or {subject_display}/AGENTS.override.md")
-    status(f"Subject checked: {display_path(str(subject_dir))}")
+    status(f"Subject checked: {subject_display}")
     agents_file = None
     agents_dir = None
     if args.subject_mode == "package":
@@ -253,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     history_dir = (root / args.history_dir).resolve()
     validate_output_layout(root, subject_dir, run_dir, history_dir)
     raw_dir = run_dir / "raw"
-    fixture_dir = raw_dir / "fixture"
+    fixture_dir = raw_dir / "workspace-source"
     results_dir = raw_dir / "results"
     workspaces_dir = raw_dir / "workspaces"
     task_ids = None if args.all_tasks else (args.task_ids or [TASKS[0]["id"]])
@@ -279,9 +292,9 @@ def main(argv: list[str] | None = None) -> int:
         status("Task selection: all tasks.")
     else:
         status(f"Task selection: {', '.join(task_ids)}.")
-    status(f"Creating fixture: {display_path(str(fixture_dir))}")
+    status(f"Creating benchmark workspace source: {display_path(str(fixture_dir))}")
     create_fixture(fixture_dir, force=True)
-    status(f"Fixture ready. Planned runs: {planned_runs}")
+    status(f"Benchmark workspace source ready. Planned runs: {planned_runs}")
     started = time.monotonic()
     outputs = run_benchmark(
         fixture_dir,
@@ -309,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
         "repeats": args.repeats,
         "seed": args.seed,
         "subject_mode": args.subject_mode,
-        "subject_dir": display_path(str(subject_dir)),
+        "subject_dir": subject_display,
         "task_ids": task_ids,
     }
     artifacts = result.get("artifacts", {})

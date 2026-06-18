@@ -235,7 +235,7 @@ class RootRunnerTests(unittest.TestCase):
                 self.assertEqual(kwargs["max_run_seconds"], 300.0)
                 self.assertEqual(kwargs["analysis_dir"], (root / "scaldex-run").resolve())
                 self.assertEqual(kwargs["subject_mode"], "package")
-                self.assertEqual(args[0], (root / "scaldex-run" / "raw" / "fixture").resolve())
+                self.assertEqual(args[0], (root / "scaldex-run" / "raw" / "workspace-source").resolve())
                 self.assertIsNone(args[1])
                 self.assertEqual(args[4], (root / "scaldex-run" / "raw" / "results").resolve())
                 self.assertEqual(kwargs["agents_dir"], (root / "subject").resolve())
@@ -258,6 +258,8 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("Measured subject: package with 1 file(s)", output.getvalue())
             self.assertIn("Run isolation: dedicated CODEX_HOME per run", error.getvalue())
             self.assertIn("Replacing previous run folder", error.getvalue())
+            self.assertIn("Creating benchmark workspace source", error.getvalue())
+            self.assertIn("Benchmark workspace source ready", error.getvalue())
             self.assertIn("Tool sanity: schema v1", error.getvalue())
             self.assertIn("Planned paid Codex runs: 2", error.getvalue())
             self.assertIn("Batch ID:", error.getvalue())
@@ -279,7 +281,7 @@ class RootRunnerTests(unittest.TestCase):
             self.assertIn("What was compared", output.getvalue())
             self.assertIn("agents means the run with your measured instruction package installed.", output.getvalue())
             self.assertIn("control means the same task run without that package and without your global ~/.codex config.", output.getvalue())
-            self.assertIn("Internal report structure is complete: schema v1, isolation reported, warnings separated, command output counted.", output.getvalue())
+            self.assertIn("Report checks: schema v1, isolation reported, warnings separated, command output counted.", output.getvalue())
             self.assertIn("Codex handoff:", output.getvalue())
             self.assertIn("command_count_increased: The instruction package needed more shell commands", output.getvalue())
             self.assertNotIn("large_subject: The tested subject package is larger than 32 KiB", output.getvalue())
@@ -393,6 +395,57 @@ class RootRunnerTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     module.main(["--model", "model"])
             self.assertIn("unsupported symlink: leak.txt", str(ctx.exception))
+
+    def test_subject_root_symlink_error_is_reported_without_traceback(self) -> None:
+        module = load_root_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            real_subject = root / "real-subject"
+            real_subject.mkdir()
+            (real_subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            try:
+                (root / "subject").symlink_to(real_subject, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
+                with self.assertRaises(SystemExit) as ctx:
+                    module.main(["--model", "model"])
+            self.assertIn("unsupported symlink: subject", str(ctx.exception))
+
+    def test_subject_parent_symlink_error_is_reported_without_traceback(self) -> None:
+        module = load_root_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            real_parent = root / "real-parent"
+            subject = real_parent / "subject"
+            subject.mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            try:
+                (root / "link-parent").symlink_to(real_parent, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
+                with self.assertRaises(SystemExit) as ctx:
+                    module.main(["--model", "model", "--subject-dir", "link-parent/subject"])
+            self.assertIn("unsupported symlink: link-parent/subject", str(ctx.exception))
+
+    def test_absolute_subject_symlink_error_does_not_print_absolute_path(self) -> None:
+        module = load_root_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            real_parent = root / "real-parent"
+            subject = real_parent / "subject"
+            subject.mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            try:
+                (root / "link-parent").symlink_to(real_parent, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with Cwd(root), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch.dict("os.environ", {"CODEX_API_KEY": "sk-test-secret"}, clear=True):
+                with self.assertRaises(SystemExit) as ctx:
+                    module.main(["--model", "model", "--subject-dir", str(root / "link-parent" / "subject")])
+            self.assertIn("unsupported symlink: subject", str(ctx.exception))
+            self.assertNotIn(str(root), str(ctx.exception))
 
     def test_all_tasks_disables_low_cost_default(self) -> None:
         module = load_root_runner()

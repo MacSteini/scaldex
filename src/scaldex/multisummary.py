@@ -281,7 +281,7 @@ def yes_no(value: Any) -> str:
 
 
 def report_type_text(summary: dict[str, Any]) -> str:
-    return "developer/CI synthetic fixture" if "synthetic_results_only" in summary.get("warnings", []) else "real benchmark reports"
+    return "synthetic benchmark report" if "synthetic_results_only" in summary.get("warnings", []) else "real benchmark reports"
 
 
 def display_path(path: Path) -> str:

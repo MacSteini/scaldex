@@ -31,7 +31,7 @@ scaldex does not edit your instructions. It measures, reports and writes evidenc
 - Codex CLI on `PATH` with `codex exec` support.
 - A Codex API key for paid benchmark runs.
 
-`scaldex bench doctor`, result replay and report summaries do not spend API money. Benchmark commands spend API money.
+`scaldex bench doctor`, `scaldex bench inspect-subject`, result replay and report summaries do not spend API money. Benchmark commands spend API money.
 
 ## Install from GitHub source
 
@@ -88,6 +88,14 @@ subject/
 `subject/` is the package under test. Keep it separate from the scaldex project folder. It must contain `AGENTS.md` or `AGENTS.override.md`.
 
 Support files and folders are optional. You can use names such as `.codex/`, `xyz/` or anything else your instruction entry file references.
+
+Inspect the package before spending API money:
+
+```sh
+scaldex bench inspect-subject --subject-dir subject
+```
+
+By default, scaldex measures the whole `subject/` package. Use `--subject-mode agents-md` only when you intentionally want to measure the entry file without its support material.
 
 Run one smoke benchmark first:
 

@@ -158,18 +158,22 @@ def install_agents_dir(workdir: Path, agents_dir: Path) -> None:
     iter_subject_files(None, agents_dir)
     remove_control_instructions(workdir)
     for source in agents_dir.iterdir():
-        if source.name == ".git":
+        if should_ignore_subject_path(Path(source.name)):
             continue
         reject_subject_symlink(source, source.name)
         target = workdir / source.name
         if source.is_dir():
             if target.exists() and not target.is_dir():
                 target.unlink()
-            shutil.copytree(source, target, ignore=shutil.ignore_patterns(".git", "__pycache__"), dirs_exist_ok=True)
+            shutil.copytree(source, target, ignore=ignore_subject_copy_names, dirs_exist_ok=True)
         else:
             if target.is_dir():
                 shutil.rmtree(target)
             shutil.copy2(source, target)
+
+
+def ignore_subject_copy_names(_directory: str, names: list[str]) -> set[str]:
+    return {name for name in names if should_ignore_subject_path(Path(name))}
 
 
 def should_ignore_subject_path(path: Path) -> bool:
@@ -181,6 +185,15 @@ def should_ignore_subject_path(path: Path) -> bool:
 def reject_subject_symlink(path: Path, relative: str) -> None:
     if path.is_symlink():
         raise ValueError(f"Subject package contains unsupported symlink: {relative}")
+
+
+def reject_subject_symlink_path(path: Path, display: str) -> None:
+    parts = path.expanduser().parts
+    current = Path(parts[0]) if path.is_absolute() else Path()
+    for part in parts[1:] if path.is_absolute() else parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"Subject package path contains unsupported symlink: {display}")
 
 
 def hash_json(value: Any) -> str:
@@ -232,6 +245,8 @@ def subject_fingerprint(agents_file: Path | None, agents_dir: Path | None) -> st
 
 def audit_subject_source(agents_file: Path | None, agents_dir: Path | None, subject_mode: str = "manual") -> dict[str, Any]:
     if agents_file is not None:
+        relative = agents_file.name if agents_file.name in INSTRUCTION_ENTRY_FILES else "AGENTS.md"
+        reject_subject_symlink(agents_file, relative)
         size = agents_file.stat().st_size
         warnings = ["large_subject"] if size > 32_000 else []
         return {
@@ -305,7 +320,7 @@ def make_run_config(*, model: str, tasks: list[dict[str, Any]], repeats: int, se
         "repeats": repeats,
         "seed": seed,
         "subject_mode": subject_mode,
-        "fixture_commit": fixture_commit_value,
+        "workspace_commit": fixture_commit_value,
         "variants": variants,
         "expected_run_count": repeats * len(task_ids) * len(variants),
     }
@@ -458,7 +473,7 @@ def run_one(
         "repeats": repeat,
         "seed": None,
         "subject_mode": subject_mode,
-        "fixture_commit": effective_fixture_commit,
+        "workspace_commit": effective_fixture_commit,
         "variants": ["agents", "control"],
         "expected_run_count": 2,
     }
@@ -475,8 +490,8 @@ def run_one(
         "repeat": repeat,
         "run_order": run_order,
         "model": model,
-        "fixture": str(fixture),
-        "fixture_commit": effective_fixture_commit,
+        "workspace_source": str(fixture),
+        "workspace_commit": effective_fixture_commit,
         "agents_source_type": "dir" if agents_dir is not None else "file",
         "agents_file": str(agents_file) if agents_file is not None else "",
         "agents_dir": str(agents_dir) if agents_dir is not None else "",
@@ -707,7 +722,7 @@ def write_synthetic_run(
         "repeat": repeat,
         "run_order": run_order,
         "model": "synthetic",
-        "fixture_commit": "synthetic",
+        "workspace_commit": "synthetic",
         "agents_file_bytes": 0,
         "subject_mode": "synthetic",
         "agents_source_file_count": 1,

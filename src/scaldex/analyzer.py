@@ -327,7 +327,7 @@ def parse_run(run_dir: Path, large_text_bytes: int = LARGE_TEXT_BYTES) -> dict[s
         "model": meta.get("model", ""),
         "codex_version": meta.get("codex_version", ""),
         "python_version": meta.get("python_version", ""),
-        "fixture_commit": meta.get("fixture_commit", ""),
+        "workspace_commit": meta.get("workspace_commit", ""),
         "agents_file_bytes": meta.get("agents_file_bytes", 0),
         "subject_mode": meta.get("subject_mode", ""),
         "agents_source_file_count": meta.get("agents_source_file_count", 0),
@@ -754,7 +754,7 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
 
     model = rows[0].get("model", "") if rows else ""
     codex_version = rows[0].get("codex_version", "") if rows else ""
-    fixture_commit = rows[0].get("fixture_commit", "") if rows else ""
+    workspace_commit = rows[0].get("workspace_commit", "") if rows else ""
     task_ids = sorted({str(row.get("task_id", "")) for row in rows if row.get("task_id")})
     repeats = sorted({int(row["repeat"]) for row in rows if str(row.get("repeat", "")).isdigit()})
     integrity_summary = summary.get("integrity", {}) if isinstance(summary.get("integrity", {}), dict) else {}
@@ -833,7 +833,7 @@ def build_result(summary: dict[str, Any], deltas: list[dict[str, Any]], rows: li
             "runs": summary.get("runs", 0),
             "model": model,
             "codex_version": codex_version,
-            "fixture_commit": fixture_commit,
+            "workspace_commit": workspace_commit,
             "task_ids": task_ids,
             "repeats": repeats,
         },
@@ -1194,7 +1194,7 @@ def write_codex_handoff_markdown(path: Path, result: dict[str, Any]) -> None:
         f"- {codex_forbidden_action(result)}",
         "- Do not use unpaired variant medians as the decision metric.",
         "- Do not ignore failed quality gates, missing expected files, invalid final JSON, missing usage data, or benchmark warnings.",
-        "- Do not edit benchmark fixture files as if they were the user’s instruction package.",
+        "- Do not edit benchmark workspace files as if they were the user’s instruction package.",
         "",
         "## Files To Inspect Next",
         "",

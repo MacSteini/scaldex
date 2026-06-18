@@ -133,6 +133,7 @@ class CliTests(unittest.TestCase):
         help_text = output.getvalue()
         self.assertIn("summarize", help_text)
         self.assertIn("doctor", help_text)
+        self.assertIn("inspect-subject", help_text)
         self.assertNotIn("fixture", help_text)
         self.assertNotIn("run        Run a paid benchmark", help_text)
         self.assertNotIn("analyze", help_text)
@@ -147,6 +148,139 @@ class CliTests(unittest.TestCase):
         self.assertIn("Replay existing result reports without running Codex.", output.getvalue())
         self.assertIn("show", output.getvalue())
         self.assertIn("Show an existing result.json as the standard scaldex result", output.getvalue())
+
+    def test_bench_inspect_subject_prints_human_audit_without_paid_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            subject = base / "subject"
+            (subject / ".codex-project" / "notes").mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            (subject / ".codex-project" / "notes" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+            with cwd(base), patch("scaldex.cli.app_main") as app_main:
+                code, text = self.run_cli_text(["bench", "inspect-subject", "--subject-dir", "subject"])
+            self.assertEqual(code, 0)
+            app_main.assert_not_called()
+            self.assertIn("=== scaldex subject inspection ===", text)
+            self.assertIn("Paid benchmark runs: no", text)
+            self.assertIn("Codex API key required: no", text)
+            self.assertIn("Entry file: AGENTS.md", text)
+            self.assertIn("Mode: package", text)
+            self.assertIn("Included files: 2", text)
+            self.assertIn(".codex-project/notes/guide.md", text)
+
+    def test_bench_inspect_subject_agents_md_mode_uses_only_entry_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            subject = base / "subject"
+            (subject / "support").mkdir(parents=True)
+            (subject / "AGENTS.override.md").write_text("# Override\n", encoding="utf-8")
+            (subject / "support" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+            with cwd(base):
+                code, payload = self.run_cli(["bench", "inspect-subject", "--subject-dir", "subject", "--subject-mode", "agents-md", "--json"])
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["entry_file"], "AGENTS.override.md")
+            self.assertEqual(payload["mode"], "agents-md")
+            self.assertEqual(payload["file_count"], 1)
+            self.assertEqual(payload["largest_files"][0]["path"], "AGENTS.override.md")
+            self.assertFalse(payload["paid_run_started"])
+
+    def test_bench_inspect_subject_keeps_external_relative_subject_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            workspace = base / "workspace"
+            subject = base / "external" / "subject"
+            workspace.mkdir()
+            subject.mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            with cwd(workspace):
+                code, text = self.run_cli_text(["bench", "inspect-subject", "--subject-dir", "../external/subject"])
+            self.assertEqual(code, 0)
+            self.assertIn("Subject: ../external/subject", text)
+            self.assertNotIn(str(base), text)
+
+    def test_bench_inspect_subject_missing_entry_exits_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "subject").mkdir()
+            with cwd(base), self.assertRaises(SystemExit) as ctx:
+                main(["bench", "inspect-subject", "--subject-dir", "subject"])
+            self.assertIn("Missing required file: subject/AGENTS.md or subject/AGENTS.override.md", str(ctx.exception))
+
+    def test_bench_inspect_subject_rejects_symlink_without_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            subject = base / "subject"
+            outside = base / "outside.txt"
+            outside.write_text("secret\n", encoding="utf-8")
+            subject.mkdir()
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            try:
+                (subject / "leak.txt").symlink_to(outside)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with cwd(base), self.assertRaises(SystemExit) as ctx:
+                main(["bench", "inspect-subject", "--subject-dir", "subject"])
+            self.assertIn("unsupported symlink: leak.txt", str(ctx.exception))
+
+    def test_bench_inspect_subject_rejects_symlinked_entry_in_agents_md_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            subject = base / "subject"
+            outside = base / "outside-AGENTS.md"
+            outside.write_text("# Outside\n", encoding="utf-8")
+            subject.mkdir()
+            try:
+                (subject / "AGENTS.md").symlink_to(outside)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with cwd(base), self.assertRaises(SystemExit) as ctx:
+                main(["bench", "inspect-subject", "--subject-dir", "subject", "--subject-mode", "agents-md"])
+            self.assertIn("unsupported symlink: AGENTS.md", str(ctx.exception))
+
+    def test_bench_inspect_subject_rejects_symlinked_subject_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            real_subject = base / "real-subject"
+            real_subject.mkdir()
+            (real_subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            try:
+                (base / "subject").symlink_to(real_subject, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with cwd(base), self.assertRaises(SystemExit) as ctx:
+                main(["bench", "inspect-subject", "--subject-dir", "subject"])
+            self.assertIn("unsupported symlink: subject", str(ctx.exception))
+
+    def test_bench_inspect_subject_rejects_symlinked_subject_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            real_parent = base / "real-parent"
+            subject = real_parent / "subject"
+            subject.mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            try:
+                (base / "link-parent").symlink_to(real_parent, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with cwd(base), self.assertRaises(SystemExit) as ctx:
+                main(["bench", "inspect-subject", "--subject-dir", "link-parent/subject"])
+            self.assertIn("unsupported symlink: link-parent/subject", str(ctx.exception))
+
+    def test_bench_inspect_subject_absolute_symlink_error_does_not_print_absolute_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            real_parent = base / "real-parent"
+            subject = real_parent / "subject"
+            subject.mkdir(parents=True)
+            (subject / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+            try:
+                (base / "link-parent").symlink_to(real_parent, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with cwd(base), self.assertRaises(SystemExit) as ctx:
+                main(["bench", "inspect-subject", "--subject-dir", str(base / "link-parent" / "subject")])
+            self.assertIn("unsupported symlink: subject", str(ctx.exception))
+            self.assertNotIn(str(base), str(ctx.exception))
 
     def test_bench_summarize_writes_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

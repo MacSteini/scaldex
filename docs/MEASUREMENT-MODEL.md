@@ -6,7 +6,7 @@ This document explains what scaldex measures and how it decides whether a result
 
 scaldex measures a Codex instruction package supplied through `--subject-dir`.
 
-The subject directory must contain `AGENTS.md` or `AGENTS.override.md`, because Codex uses these files as instruction entry points. The directory may also contain support files or folders that the entry file references. They do not need a specific name.
+The subject directory must contain `AGENTS.md` or `AGENTS.override.md`, because Codex uses these files as instruction entry points. The directory may also contain support files or folders that the entry file references. They do not need a specific name, and scaldex does not require or forbid a particular baseline folder name.
 
 Example:
 
@@ -16,16 +16,16 @@ subject/
   xyz/
 ```
 
-`subject/` is the package under test, not the scaldex project folder. `.codex/` is one possible optional support folder. scaldex copies all allowed files from the package into the benchmark workspace for the `agents` variant. Keep generated report folders such as `scaldex-run/` and `scaldex-history/` outside it.
+`subject/` is the package under test, not the scaldex project folder. `.codex/`, `.codex-project/`, `xyz/` or any other referenced support folder can be part of the measured package. scaldex copies all allowed files from the package into the benchmark workspace for the `agents` variant. Keep generated report folders such as `scaldex-run/` and `scaldex-history/` outside it.
 
-scaldex creates a temporary benchmark fixture with small source files, tests, release metadata and intentionally noisy generated files. The fixture is not your project; it gives both variants the same controlled workspace.
+scaldex creates a temporary benchmark workspace with small source files, tests, release metadata and intentionally noisy generated files. The workspace is not your project; it gives both variants the same controlled source tree.
 
 ## The two variants
 
 Each selected task runs in paired variants:
 
-- `agents`: the fixture plus your measured instruction package.
-- `control`: the same fixture without your measured package and without your global `~/.codex` config.
+- `agents`: the benchmark workspace plus your measured instruction package.
+- `control`: the same benchmark workspace without your measured package and without your global `~/.codex` config.
 
 Both variants run with:
 
@@ -47,6 +47,14 @@ Before a run starts, scaldex audits the subject package:
 - records the largest files
 - creates a subject fingerprint from included paths and file contents
 - warns about large packages or `.codex/` support folders
+
+Run the same audit without spending API money:
+
+```sh
+scaldex bench inspect-subject --subject-dir subject
+```
+
+Use `--subject-mode agents-md` when you want to inspect or measure only the entry file. Use the default `package` mode when support material is part of the package you want Codex to receive.
 
 The fingerprint is an identity check. Use it when comparing reports to confirm that they measured the same package version.
 
@@ -81,7 +89,7 @@ A `not_effective` task result means:
 - the package did not produce measurable token savings for that workflow, or
 - quality, expected files, structured output, usage data, path integrity or warnings blocked the result
 
-It does not automatically mean your instructions are bad. It means they did not help enough under that measured workflow and benchmark fixture.
+It does not automatically mean your instructions are bad. It means they did not help enough under that measured workflow and benchmark workspace.
 
 This distinction matters. An instruction package can be effective for debugging or code lookup and still be ineffective for documentation scope, release audit or noisy-repository navigation. scaldex reports that as task-specific evidence; it does not hide the unevenness behind one score.
 
@@ -111,7 +119,7 @@ One decision-grade task is still only one task. A global efficiency claim needs 
 
 The built-in tasks act as controlled proxy scenarios. They stay close to common Codex work, but they do not copy your repository or every task your team will ever run.
 
-The fixture deliberately includes:
+The benchmark workspace deliberately includes:
 
 - small source files with clear ownership boundaries
 - tests that point to realistic production causes

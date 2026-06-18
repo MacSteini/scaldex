@@ -42,7 +42,7 @@ def write_run(
             "repeats": 1,
             "seed": 1,
             "subject_mode": "package",
-            "fixture_commit": "abc",
+            "workspace_commit": "abc",
             "variants": ["agents", "control"],
             "expected_run_count": expected_run_count,
         },
@@ -53,7 +53,7 @@ def write_run(
         "repeat": 1,
         "run_order": 1 if variant == "control" else 2,
         "model": "test-model",
-        "fixture_commit": "abc",
+        "workspace_commit": "abc",
         "agents_file_bytes": 10,
         "subject_mode": "package",
         "agents_source_file_count": 3,
@@ -446,13 +446,15 @@ class AnalyzerTests(unittest.TestCase):
                 "median_delta_first_expected_file_event_index_agents_minus_control": 4,
             },
         }
-        result = build_result(summary, [{"task_id": "x"}], [{"model": "m", "codex_version": "c", "fixture_commit": "f", "task_id": "t", "repeat": 1}])
+        result = build_result(summary, [{"task_id": "x"}], [{"model": "m", "codex_version": "c", "workspace_commit": "f", "task_id": "t", "repeat": 1}])
         self.assertEqual(result["verdict"], "mixed")
         self.assertIn("total_observed_tokens_increased", result["warnings"])
         self.assertIn("total_observed_tokens_increased", result["benchmark_warnings"])
         self.assertIn("command_output_bytes_increased", result["benchmark_warnings"])
         self.assertIn("large_text_events_increased", result["benchmark_warnings"])
         self.assertIn("agents_found_relevant_file_later", result["warnings"])
+        self.assertEqual(result["context"]["workspace_commit"], "f")
+        self.assertNotIn("fixture_commit", result["context"])
 
     def test_command_output_warning_requires_relative_regression(self) -> None:
         summary = {

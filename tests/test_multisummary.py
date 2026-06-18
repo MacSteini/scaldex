@@ -249,7 +249,7 @@ class MultiSummaryTests(unittest.TestCase):
             summary = build_multi_summary([result_path])
             text = format_multi_summary_console(summary)
             self.assertIn("=== scaldex summary ===", text)
-            self.assertIn("developer/CI synthetic fixture", text)
+            self.assertIn("synthetic benchmark report", text)
             self.assertIn("not to claim real token efficiency", text)
             self.assertIn("What to do now:", text)
 

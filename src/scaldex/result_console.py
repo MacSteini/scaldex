@@ -229,8 +229,8 @@ def tool_sanity_sentence(tool_sanity: dict[str, Any]) -> str:
     warnings = tool_sanity.get("separated_warning_sections", False)
     output = tool_sanity.get("aggregated_command_output_counted", False)
     if isolation and warnings and output:
-        return f"Internal report structure is complete: schema v{schema}, isolation reported, warnings separated, command output counted."
-    return f"Internal report structure needs attention: schema v{schema}, isolation reported={isolation}, warnings separated={warnings}, command output counted={output}."
+        return f"Report checks: schema v{schema}, isolation reported, warnings separated, command output counted."
+    return f"Report checks need attention: schema v{schema}, isolation reported={isolation}, warnings separated={warnings}, command output counted={output}."
 
 
 def print_result(result: dict[str, object], *, compare_history_command: str | None = None, result_dir: Path | None = None) -> None:
@@ -254,7 +254,7 @@ def print_result(result: dict[str, object], *, compare_history_command: str | No
     )
     print("\n=== scaldex result ===")
     print("Result")
-    print(f"Result type: {'developer/CI synthetic fixture' if synthetic else 'real benchmark report'}")
+    print(f"Result type: {'synthetic benchmark report' if synthetic else 'real benchmark report'}")
     print(f"Verdict: {result.get('verdict', 'unknown')}")
     print(f"What this means: {display_explanation}")
     print()
