@@ -132,6 +132,10 @@ Do not improve the measured package from a smoke win alone. Smoke evidence only 
 - [Built-in task guide](docs/BUILT-IN-TASKS.md): task selection and the eight v1.0 benchmark workflows.
 - [Contributing guide](CONTRIBUTING.md "Contributing guide"): development checks and contribution boundaries.
 
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing the package. Release, tag, push, and publication actions always require explicit approval.
+
 ## Licence
 
 This project uses [AGPL-3.0-only](LICENCE "Project licence"). You may use, change and distribute it under the licence terms.
